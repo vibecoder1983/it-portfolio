@@ -46,6 +46,44 @@ export default function App() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  async function promoteToPortfolio(demandId) {
+    const d = demands.find(x => x.id === demandId)
+    if (!d) return
+    const color = PROJ_COLORS[projects.length % PROJ_COLORS.length]
+    const payload = {
+      title: d.title, cat: 'Sonstiges', phase: 'Preparation',
+      start_date: d.start_date || null, end_date: null,
+      budget: d.budget || 0, progress: 0,
+      pm_it: '', pm_biz: d.req || '',
+      color, milestones: [],
+    }
+    const res = await sb.from('projects').insert(payload).select().single()
+    if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
+    const { error: delErr } = await sb.from('demands').delete().eq('id', demandId)
+    if (delErr) { showToast('Fehler beim Löschen des Demands', true); return }
+    setProjects(prev => [...prev, { ...res.data, milestones: [] }])
+    setDemands(prev => prev.filter(x => x.id !== demandId))
+    showToast('Demand ins Portfolio übernommen')
+  }
+
+  async function demoteToBacklog(projectId) {
+    const p = projects.find(x => x.id === projectId)
+    if (!p) return
+    const payload = {
+      title: p.title, req: p.pm_biz || '', prio: 'Hoch', val: 'Hoch',
+      effort: 0, budget: p.budget || 0,
+      start_date: p.start_date || null, description: '',
+      status: 'In Bewertung',
+    }
+    const res = await sb.from('demands').insert(payload).select().single()
+    if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
+    const { error: delErr } = await sb.from('projects').delete().eq('id', projectId)
+    if (delErr) { showToast('Fehler beim Löschen des Projekts', true); return }
+    setDemands(prev => [...prev, res.data])
+    setProjects(prev => prev.filter(x => x.id !== projectId))
+    showToast('Projekt zurück in den Demand-Backlog verschoben')
+  }
+
   function exportExcel() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
@@ -109,8 +147,8 @@ export default function App() {
       topbarExtra={topbarExtra}
     >
       {panel === 'dashboard'   && <Dashboard demands={demands} projects={projects} />}
-      {panel === 'demand'      && <Demand demands={demands} setDemands={setDemands} />}
-      {panel === 'portfolio'   && <Portfolio projects={projects} setProjects={setProjects} mitarbeiter={mitarbeiter} assignments={assignments} setAssignments={setAssignments} />}
+      {panel === 'demand'      && <Demand demands={demands} setDemands={setDemands} onPromote={promoteToPortfolio} />}
+      {panel === 'portfolio'   && <Portfolio projects={projects} setProjects={setProjects} mitarbeiter={mitarbeiter} assignments={assignments} setAssignments={setAssignments} onDemote={demoteToBacklog} />}
       {panel === 'roadmap'     && <Roadmap projects={projects} />}
       {panel === 'capacity'    && <Capacity mitarbeiter={mitarbeiter} assignments={assignments} />}
       {panel === 'resources'   && <Resources assignments={assignments} setAssignments={setAssignments} projects={projects} mitarbeiter={mitarbeiter} />}

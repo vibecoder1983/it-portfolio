@@ -5,7 +5,7 @@ import { sb } from '../lib/supabase'
 
 const EMPTY = { title:'', req:'', start_date:'', prio:'Hoch', val:'Sehr hoch', effort:'', budget:'', description:'' }
 
-export default function Demand({ demands, setDemands }) {
+export default function Demand({ demands, setDemands, onPromote }) {
   const [filter, setFilter] = useState('')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(EMPTY)
@@ -70,7 +70,7 @@ export default function Demand({ demands, setDemands }) {
           <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:860 }}>
             <thead>
               <tr>
-                {['Vorhaben','Antragsteller','Priorität','Budget (€)','Aufwand','Status',''].map(h => (
+                {['Vorhaben','Antragsteller','Priorität','Budget (€)','Aufwand','Status','',''].map(h => (
                   <th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase',letterSpacing:'.05em' }}>{h}</th>
                 ))}
               </tr>
@@ -99,6 +99,11 @@ export default function Demand({ demands, setDemands }) {
                   </td>
                   <td style={{ padding:'8px 10px' }}>
                     <Btn size="sm" onClick={() => openEdit(d)}><i className="ti ti-edit" /></Btn>
+                  </td>
+                  <td style={{ padding:'8px 10px' }}>
+                    <Btn size="sm" variant="primary" title="Ins Portfolio übernehmen" onClick={() => onPromote(d.id)}>
+                      <i className="ti ti-arrow-right" /> Portfolio
+                    </Btn>
                   </td>
                 </tr>
               ))}

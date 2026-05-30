@@ -170,7 +170,7 @@ function ProjectDetail({ project, mitarbeiter, assignments, setAssignments, setP
 }
 
 /* ── Portfolio List ── */
-export default function Portfolio({ projects, setProjects, mitarbeiter, assignments, setAssignments }) {
+export default function Portfolio({ projects, setProjects, mitarbeiter, assignments, setAssignments, onDemote }) {
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(EMPTY_PROJ)
   const [editId, setEditId] = useState(null)
@@ -240,6 +240,7 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
                 <div style={{ display:'flex',gap:6,alignItems:'center' }}>
                   <Badge label={p.phase} />
                   <Btn size="sm" onClick={e => { e.stopPropagation(); openEdit(p) }}><i className="ti ti-edit" /></Btn>
+                  <Btn size="sm" variant="danger" title="Zurück in Demand-Backlog" onClick={e => { e.stopPropagation(); onDemote(p.id) }}><i className="ti ti-arrow-left" /> Demand</Btn>
                 </div>
               </div>
               <div style={{ fontSize:11,color:'var(--text-secondary)',marginBottom:8 }}>
