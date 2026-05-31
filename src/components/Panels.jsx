@@ -108,6 +108,32 @@ export function Roadmap({ projects }) {
 }
 
 /* ══════════════════ CAPACITY ══════════════════ */
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return { week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), year: d.getUTCFullYear() }
+}
+
+function getWeeksOfYear(year) {
+  const weeks = []
+  const d = new Date(year, 0, 1)
+  // find first Monday
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1)
+  while (d.getFullYear() <= year) {
+    const start = new Date(d)
+    const end = new Date(d); end.setDate(end.getDate() + 6)
+    const { week } = getISOWeek(start)
+    if (start.getFullYear() === year || end.getFullYear() === year) {
+      weeks.push({ label: `KW${week}`, start: new Date(start), end: new Date(end) })
+    }
+    d.setDate(d.getDate() + 7)
+    if (weeks.length >= 53) break
+  }
+  return weeks
+}
+
 export function Capacity({ mitarbeiter, assignments }) {
   const years = useMemo(() => {
     const all = [...assignments.flatMap(a => [a.from_date, a.to_date])].filter(Boolean).map(s => new Date(s).getFullYear())
@@ -115,15 +141,84 @@ export function Capacity({ mitarbeiter, assignments }) {
     return set.length ? set : [new Date().getFullYear()]
   }, [assignments])
 
-  const [year, setYear] = useState(() => years[years.length - 1] || new Date().getFullYear())
+  const [year, setYear]   = useState(() => years[years.length - 1] || new Date().getFullYear())
+  const [zoom, setZoom]   = useState('month') // 'week' | 'month' | 'quarter'
+
+  // build columns depending on zoom
+  const cols = useMemo(() => {
+    if (zoom === 'week') {
+      return getWeeksOfYear(year)
+    }
+    if (zoom === 'quarter') {
+      return [0,1,2,3].map(q => ({
+        label: `Q${q+1} ${year}`,
+        start: new Date(year, q*3, 1),
+        end:   new Date(year, q*3+3, 0),
+      }))
+    }
+    // month
+    return Array.from({length:12}, (_, mi) => ({
+      label: MONTHS_SHORT[mi],
+      start: new Date(year, mi, 1),
+      end:   new Date(year, mi+1, 0),
+    }))
+  }, [year, zoom])
+
+  // Berechnet die tatsächlichen Stunden in einer Periode:
+  // Für jedes Assignment → Überlappungswochen × h/Woche
+  function hoursInPeriod(ma, colStart, colEnd) {
+    const periodDays = (colEnd - colStart) / (1000 * 60 * 60 * 24) + 1
+    const periodWeeks = periodDays / 7
+
+    return assignments.filter(a => {
+      if (a.ma_id !== ma.id) return false
+      const af = a.from_date ? new Date(a.from_date) : null
+      const at = a.to_date   ? new Date(a.to_date)   : null
+      return af && at && af <= colEnd && at >= colStart
+    }).reduce((s, a) => {
+      const af = new Date(a.from_date)
+      const at = new Date(a.to_date)
+      const overlapStart = af > colStart ? af : colStart
+      const overlapEnd   = at < colEnd   ? at : colEnd
+      const overlapDays  = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24) + 1
+      const overlapWeeks = overlapDays / 7
+      return s + (a.hours || 0) * overlapWeeks
+    }, 0)
+  }
+
+  // Maximalkapazität für die Periode in Stunden
+  function maxHoursInPeriod(ma, colStart, colEnd) {
+    const periodDays  = (colEnd - colStart) / (1000 * 60 * 60 * 24) + 1
+    const periodWeeks = periodDays / 7
+    return ma.max_h * periodWeeks
+  }
+
+  function fmtH(val) {
+    return val >= 10 ? Math.round(val) + 'h' : val > 0 ? Math.round(val) + 'h' : ''
+  }
+
+  // for week view show only KW number, hide label if too many
+  const showLabel = zoom !== 'week' || cols.length <= 30
 
   return (
     <Card>
-      <CardHeader title="Kapazitätsplanung — Stunden/Woche">
-        <div style={{ display:'flex',gap:10,alignItems:'center' }}>
+      <CardHeader title="Kapazitätsplanung">
+        <div style={{ display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' }}>
           <select value={year} onChange={e => setYear(parseInt(e.target.value))} style={{ fontSize:12,padding:'5px 8px',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',background:'var(--bg-primary)' }}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          <div style={{ display:'flex',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',overflow:'hidden' }}>
+            {[['week','Wochen'],['month','Monate'],['quarter','Quartale']].map(([v,lbl]) => (
+              <button key={v} onClick={() => setZoom(v)}
+                style={{ fontSize:11,padding:'5px 10px',border:'none',cursor:'pointer',fontFamily:'var(--font)',
+                  background: zoom===v ? '#185FA5' : 'var(--bg-primary)',
+                  color:      zoom===v ? '#fff'    : 'var(--text-secondary)',
+                  borderRight: v!=='quarter' ? '0.5px solid var(--border-mid)' : 'none',
+                }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
           {[['#EAF3DE','≤80%'],['#FAEEDA','80–100%'],['#FCEBEB','>100%']].map(([bg,lbl]) => (
             <span key={lbl} style={{ fontSize:11,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:4 }}>
               <span style={{ display:'inline-block',width:9,height:9,borderRadius:2,background:bg }} />{lbl}
@@ -132,33 +227,44 @@ export function Capacity({ mitarbeiter, assignments }) {
         </div>
       </CardHeader>
 
-      <div style={{ display:'flex',paddingLeft:140,marginBottom:4 }}>
-        {MONTHS_SHORT.map(m => <div key={m} style={{ flex:1,textAlign:'center',fontSize:10,fontWeight:500,color:'var(--text-tertiary)' }}>{m}</div>)}
-      </div>
+      <div style={{ overflowX:'auto' }}>
+        <div style={{ minWidth: zoom==='week' ? cols.length*22+140 : 500 }}>
+          {/* column headers */}
+          <div style={{ display:'flex',paddingLeft:140,marginBottom:4 }}>
+            {cols.map((c,i) => (
+              <div key={i} style={{ flex:1,minWidth:zoom==='week'?20:0,textAlign:'center',fontSize:zoom==='week'?9:10,fontWeight:500,color:'var(--text-tertiary)',overflow:'hidden',whiteSpace:'nowrap' }}>
+                {c.label}
+              </div>
+            ))}
+          </div>
 
-      {mitarbeiter.map(ma => (
-        <div key={ma.id} style={{ display:'flex',alignItems:'center',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:3 }}>
-          <div style={{ width:128,minWidth:128 }}>
-            <div style={{ fontSize:12,fontWeight:500 }}>{ma.name.split(' ')[0]}</div>
-            <div style={{ fontSize:10,color:'var(--text-tertiary)' }}>{ma.name.split(' ')[1]||''} · max {ma.max_h}h</div>
-          </div>
-          <div style={{ flex:1,display:'flex',gap:3 }}>
-            {Array.from({length:12},(_,mi) => {
-              const mStart = new Date(year, mi, 1), mEnd = new Date(year, mi+1, 0)
-              const total = assignments.filter(a => {
-                if (a.ma_id !== ma.id) return false
-                const af = a.from_date ? new Date(a.from_date) : null
-                const at = a.to_date   ? new Date(a.to_date)   : null
-                return af && at && af <= mEnd && at >= mStart
-              }).reduce((s, a) => s + (a.hours||0), 0)
-              let bg = '#EAF3DE', color = '#27500A'
-              if (total > ma.max_h)         { bg = '#FCEBEB'; color = '#791F1F' }
-              else if (total > ma.max_h*.8) { bg = '#FAEEDA'; color = '#633806' }
-              return <div key={mi} style={{ flex:1 }}><div style={{ height:20,borderRadius:3,background:bg,color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500 }}>{total ? total+'h' : ''}</div></div>
-            })}
-          </div>
+          {mitarbeiter.map(ma => (
+            <div key={ma.id} style={{ display:'flex',alignItems:'center',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:2 }}>
+              <div style={{ width:128,minWidth:128 }}>
+                <div style={{ fontSize:12,fontWeight:500 }}>{ma.name.split(' ')[0]}</div>
+                <div style={{ fontSize:10,color:'var(--text-tertiary)' }}>{ma.name.split(' ')[1]||''} · max {ma.max_h}h</div>
+              </div>
+              <div style={{ flex:1,display:'flex',gap:2 }}>
+                {cols.map((c,i) => {
+                  const total   = hoursInPeriod(ma, c.start, c.end)
+                  const maxH    = maxHoursInPeriod(ma, c.start, c.end)
+                  let bg = '#EAF3DE', color = '#27500A'
+                  if (total > maxH)        { bg = '#FCEBEB'; color = '#791F1F' }
+                  else if (total > maxH*.8){ bg = '#FAEEDA'; color = '#633806' }
+                  return (
+                    <div key={i} style={{ flex:1,minWidth:zoom==='week'?20:0 }}>
+                      <div title={total ? `${Math.round(total)}h / ${Math.round(maxH)}h max` : ''}
+                        style={{ height:20,borderRadius:3,background:total?bg:'var(--bg-secondary)',color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:zoom==='week'?8:10,fontWeight:500,whiteSpace:'nowrap' }}>
+                        {fmtH(total)}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </Card>
   )
 }
