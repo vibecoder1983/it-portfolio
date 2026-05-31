@@ -3,7 +3,7 @@ import { Badge, Btn, Card, CardHeader, Modal, ModalActions, FormRow, FormGrid, s
 import { PHASES, PHASE_COLORS, PHASE_ICONS, PROJ_COLORS, fmt } from '../lib/constants'
 import { sb } from '../lib/supabase'
 
-const EMPTY_PROJ = { title:'', cat:'ERP', phase:'Preparation', start_date:'', end_date:'', budget:'', progress:0, pm_it:'', pm_biz:'' }
+const EMPTY_PROJ = { title:'', cat:'ERP', phase:'Preparation', start_date:'', end_date:'', budget:'', progress:0, pm_it:'', pm_biz:'', abgeschlossen: false }
 
 /* ── Phase Stepper ── */
 function PhaseStepper({ phase, onSet }) {
@@ -188,8 +188,18 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
   )
 
   function openEdit(p) {
-    setForm({ title:p.title, cat:p.cat, phase:p.phase, start_date:p.start_date||'', end_date:p.end_date||'', budget:p.budget||'', progress:p.progress||0, pm_it:p.pm_it||'', pm_biz:p.pm_biz||'' })
+    setForm({ title:p.title, cat:p.cat, phase:p.phase, start_date:p.start_date||'', end_date:p.end_date||'', budget:p.budget||'', progress:p.progress||0, pm_it:p.pm_it||'', pm_biz:p.pm_biz||'', abgeschlossen: p.abgeschlossen||false })
     setEditId(p.id); setModal(true)
+  }
+
+  async function toggleAbgeschlossen(e, id) {
+    e.stopPropagation()
+    const p = projects.find(x => x.id === id); if (!p) return
+    const val = !p.abgeschlossen
+    setProjects(prev => prev.map(x => x.id === id ? { ...x, abgeschlossen: val } : x))
+    const { error } = await sb.from('projects').update({ abgeschlossen: val }).eq('id', id)
+    if (error) { setProjects(prev => prev.map(x => x.id === id ? { ...x, abgeschlossen: !val } : x)); showToast('Fehler', true) }
+    else showToast(val ? 'Projekt als abgeschlossen markiert' : 'Projekt wieder aktiviert')
   }
   function openNew() { setForm(EMPTY_PROJ); setEditId(null); setModal(true) }
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -213,52 +223,76 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
     showToast('Projekt gespeichert'); setModal(false)
   }
 
+  const aktiv        = projects.filter(p => !p.abgeschlossen)
+  const abgeschlossen = projects.filter(p =>  p.abgeschlossen)
+
+  function ProjectCard({ p }) {
+    const phIdx = PHASES.indexOf(p.phase)
+    const res   = assignments.filter(a => a.proj_id === p.id)
+    return (
+      <div onClick={() => setDetail(p.id)}
+        style={{ background: p.abgeschlossen ? 'var(--bg-secondary)' : 'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:'var(--radius-lg)', padding:'1rem', marginBottom:'.75rem', cursor:'pointer', transition:'border-color .15s', opacity: p.abgeschlossen ? 0.75 : 1 }}
+        onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-strong)'}
+        onMouseLeave={e => e.currentTarget.style.borderColor='var(--border-light)'}
+      >
+        <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+            <div style={{ width:10,height:10,borderRadius:'50%',background:p.color,flexShrink:0,marginTop:2 }} />
+            <div>
+              <div style={{ fontSize:13,fontWeight:500,textDecoration: p.abgeschlossen ? 'line-through' : 'none',color: p.abgeschlossen ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>{p.title}</div>
+              <div style={{ fontSize:11,color:'var(--text-tertiary)' }}>IT: {p.pm_it||'—'} · Biz: {p.pm_biz||'—'}</div>
+            </div>
+          </div>
+          <div style={{ display:'flex',gap:6,alignItems:'center' }}>
+            {p.abgeschlossen
+              ? <span style={{ fontSize:11,fontWeight:500,color:'#1D9E75',display:'flex',alignItems:'center',gap:3 }}><i className="ti ti-circle-check" style={{ fontSize:14 }} /> Abgeschlossen</span>
+              : <Badge label={p.phase} />
+            }
+            <button title={p.abgeschlossen ? 'Wieder aktivieren' : 'Als abgeschlossen markieren'}
+              onClick={e => toggleAbgeschlossen(e, p.id)}
+              style={{ display:'inline-flex',alignItems:'center',gap:4,fontSize:11,padding:'4px 8px',borderRadius:'var(--radius-md)',border:`0.5px solid ${p.abgeschlossen ? '#1D9E75' : 'var(--border-mid)'}`,background: p.abgeschlossen ? '#EAF3DE' : 'var(--bg-primary)',color: p.abgeschlossen ? '#1D9E75' : 'var(--text-secondary)',cursor:'pointer',fontFamily:'var(--font)' }}>
+              <i className={`ti ${p.abgeschlossen ? 'ti-x' : 'ti-circle-check'}`} />
+              {p.abgeschlossen ? 'Reaktivieren' : 'Abschließen'}
+            </button>
+            <Btn size="sm" onClick={e => { e.stopPropagation(); openEdit(p) }}><i className="ti ti-edit" /></Btn>
+            {!p.abgeschlossen && <Btn size="sm" variant="danger" title="Zurück in Demand-Backlog" onClick={e => { e.stopPropagation(); onDemote(p.id) }}><i className="ti ti-arrow-left" /> Demand</Btn>}
+          </div>
+        </div>
+        <div style={{ fontSize:11,color:'var(--text-secondary)',marginBottom:8 }}>
+          {fmt(p.start_date)} – {fmt(p.end_date)} · {p.budget ? (p.budget/1000).toFixed(0)+'k €' : '—'} · {res.length} MA
+        </div>
+        <div style={{ display:'flex',gap:10,alignItems:'center' }}>
+          <div style={{ flex:1,background:'var(--bg-secondary)',borderRadius:4,height:5 }}>
+            <div style={{ width:`${p.progress||0}%`,height:5,borderRadius:4,background: p.abgeschlossen ? '#1D9E75' : p.color }} />
+          </div>
+          <span style={{ fontSize:11,fontWeight:500 }}>{p.progress||0}%</span>
+        </div>
+        {!p.abgeschlossen && (
+          <div style={{ display:'flex',height:4,borderRadius:3,overflow:'hidden',gap:1,marginTop:8 }}>
+            {PHASES.map((_,i) => <div key={i} style={{ flex:1,background: i<=phIdx ? PHASE_COLORS[i] : 'var(--bg-secondary)' }} />)}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <Card>
-        <CardHeader title="IT-Portfolio">
+        <CardHeader title="IT-Portfolio — Aktive Projekte">
           <Btn variant="primary" onClick={openNew}><i className="ti ti-plus" /> Projekt anlegen</Btn>
         </CardHeader>
-
-        {projects.map(p => {
-          const phIdx = PHASES.indexOf(p.phase)
-          const res = assignments.filter(a => a.proj_id === p.id)
-          return (
-            <div key={p.id} onClick={() => setDetail(p.id)}
-              style={{ background:'var(--bg-primary)',border:'0.5px solid var(--border-light)',borderRadius:'var(--radius-lg)',padding:'1rem',marginBottom:'.75rem',cursor:'pointer',transition:'border-color .15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-strong)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor='var(--border-light)'}
-            >
-              <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8 }}>
-                <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-                  <div style={{ width:10,height:10,borderRadius:'50%',background:p.color,flexShrink:0,marginTop:2 }} />
-                  <div>
-                    <div style={{ fontSize:13,fontWeight:500 }}>{p.title}</div>
-                    <div style={{ fontSize:11,color:'var(--text-tertiary)' }}>IT: {p.pm_it||'—'} · Biz: {p.pm_biz||'—'}</div>
-                  </div>
-                </div>
-                <div style={{ display:'flex',gap:6,alignItems:'center' }}>
-                  <Badge label={p.phase} />
-                  <Btn size="sm" onClick={e => { e.stopPropagation(); openEdit(p) }}><i className="ti ti-edit" /></Btn>
-                  <Btn size="sm" variant="danger" title="Zurück in Demand-Backlog" onClick={e => { e.stopPropagation(); onDemote(p.id) }}><i className="ti ti-arrow-left" /> Demand</Btn>
-                </div>
-              </div>
-              <div style={{ fontSize:11,color:'var(--text-secondary)',marginBottom:8 }}>
-                {fmt(p.start_date)} – {fmt(p.end_date)} · {p.budget ? (p.budget/1000).toFixed(0)+'k €' : '—'} · {res.length} MA
-              </div>
-              <div style={{ display:'flex',gap:10,alignItems:'center' }}>
-                <div style={{ flex:1,background:'var(--bg-secondary)',borderRadius:4,height:5 }}>
-                  <div style={{ width:`${p.progress||0}%`,height:5,borderRadius:4,background:p.color }} />
-                </div>
-                <span style={{ fontSize:11,fontWeight:500 }}>{p.progress||0}%</span>
-              </div>
-              <div style={{ display:'flex',height:4,borderRadius:3,overflow:'hidden',gap:1,marginTop:8 }}>
-                {PHASES.map((_,i) => <div key={i} style={{ flex:1,background: i<=phIdx ? PHASE_COLORS[i] : 'var(--bg-secondary)' }} />)}
-              </div>
-            </div>
-          )
-        })}
+        {aktiv.length ? aktiv.map(p => <ProjectCard key={p.id} p={p} />) : (
+          <div style={{ fontSize:13,color:'var(--text-tertiary)',padding:'8px 0' }}>Keine aktiven Projekte</div>
+        )}
       </Card>
+
+      {abgeschlossen.length > 0 && (
+        <Card style={{ marginTop:'1rem' }}>
+          <CardHeader title={<><i className="ti ti-archive" style={{ marginRight:6 }} />Abgeschlossene Projekte <span style={{ fontSize:12,fontWeight:400,color:'var(--text-tertiary)',marginLeft:6 }}>({abgeschlossen.length})</span></>} />
+          {abgeschlossen.map(p => <ProjectCard key={p.id} p={p} />)}
+        </Card>
+      )}
 
       <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-briefcase" /> Projekt</>}>
         <FormRow label="Projekttitel"><input value={form.title} onChange={e => f('title', e.target.value)} /></FormRow>
@@ -286,6 +320,10 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
           <FormRow label="Projektleiter IT"><input value={form.pm_it} onChange={e => f('pm_it', e.target.value)} /></FormRow>
           <FormRow label="Projektleiter Business"><input value={form.pm_biz} onChange={e => f('pm_biz', e.target.value)} /></FormRow>
         </FormGrid>
+        <div style={{ display:'flex',alignItems:'center',gap:8,margin:'1rem 0 .5rem' }}>
+          <input type="checkbox" id="abgeschlossen" checked={form.abgeschlossen||false} onChange={e => f('abgeschlossen', e.target.checked)} style={{ width:16,height:16,cursor:'pointer' }} />
+          <label htmlFor="abgeschlossen" style={{ fontSize:13,cursor:'pointer',userSelect:'none' }}>Projekt abgeschlossen</label>
+        </div>
         <ModalActions>
           <Btn onClick={() => setModal(false)}>Abbrechen</Btn>
           <Btn variant="primary" disabled={saving} onClick={save}><i className="ti ti-check" /> Speichern</Btn>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Badge, Card, CardHeader } from './UI'
-import { PHASES, PHASE_COLORS, D_STATUSES, BADGE_CLASS } from '../lib/constants'
+import { PHASES, PHASE_COLORS, D_STATUSES, BADGE_CLASS, MONTHS_SHORT } from '../lib/constants'
 
 const CAT_COLORS = {
   'ERP': '#EF9F27',
@@ -60,6 +60,24 @@ export default function Dashboard({ demands, projects }) {
   const catCnt = {}
   projects.forEach(p => { catCnt[p.cat] = (catCnt[p.cat]||0) + 1 })
   const catEntries = Object.entries(catCnt).sort((a,b) => b[1]-a[1])
+
+  // Letzte 12 Monate aufbauen
+  const now = new Date()
+  const last12 = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)
+    return { year: d.getFullYear(), month: d.getMonth(), label: MONTHS_SHORT[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2) }
+  })
+
+  // Projekte pro Monat (nach end_date)
+  const projectsByMonth = last12.map(({ year, month }) => ({
+    ...{ year, month },
+    items: projects.filter(p => {
+      if (!p.end_date) return false
+      const d = new Date(p.end_date)
+      return d.getFullYear() === year && d.getMonth() === month
+    })
+  }))
+  const maxPerMonth = Math.max(1, ...projectsByMonth.map(m => m.items.length))
 
   return (
     <div>
@@ -151,6 +169,77 @@ export default function Dashboard({ demands, projects }) {
         </Card>
 
       </div>
+
+      {/* Projektabschlüsse Timeline */}
+      <Card style={{ marginTop:'1rem' }}>
+        <CardHeader title="Projektabschlüsse — Letzte 12 Monate" />
+        <div style={{ overflowX:'auto' }}>
+          <div style={{ minWidth:700, paddingBottom:4 }}>
+
+            {/* Balken */}
+            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:90, marginBottom:8 }}>
+              {projectsByMonth.map(({ year, month, items }, i) => {
+                const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
+                const barH = items.length ? Math.max(20, (items.length / maxPerMonth) * 80) : 0
+                return (
+                  <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%' }}>
+                    {items.length > 0 && (
+                      <div style={{ fontSize:11, fontWeight:600, color: isCurrentMonth ? '#185FA5' : '#1D9E75', marginBottom:3 }}>{items.length}</div>
+                    )}
+                    <div
+                      title={items.length ? items.map(p => p.title).join('\n') : ''}
+                      style={{
+                        width:'100%', borderRadius:'4px 4px 0 0',
+                        height: barH || 3,
+                        background: items.length
+                          ? (isCurrentMonth ? '#185FA5' : items.some(p => p.abgeschlossen) ? '#1D9E75' : '#378ADD')
+                          : 'var(--bg-secondary)',
+                        cursor: items.length ? 'pointer' : 'default',
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Trennlinie */}
+            <div style={{ borderTop:'1.5px solid var(--border-strong)', marginBottom:6 }} />
+
+            {/* Monatslabels */}
+            <div style={{ display:'flex', gap:6 }}>
+              {projectsByMonth.map(({ year, month, label }, i) => {
+                const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
+                return (
+                  <div key={i} style={{ flex:1, textAlign:'center', fontSize:10, fontWeight: isCurrentMonth ? 600 : 400, color: isCurrentMonth ? '#185FA5' : 'var(--text-tertiary)', whiteSpace:'nowrap' }}>
+                    {label}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Projektlabels */}
+            <div style={{ marginTop:10, display:'flex', gap:6 }}>
+              {projectsByMonth.map(({ items }, i) => (
+                <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', gap:3 }}>
+                  {items.map(p => (
+                    <div key={p.id} title={p.title}
+                      style={{ background: p.abgeschlossen ? '#EAF3DE' : '#E6F1FB', borderRadius:3, padding:'2px 4px', fontSize:9, fontWeight:500, color: p.abgeschlossen ? '#27500A' : '#0C447C', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>
+                      {p.title}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap:16, marginTop:10, fontSize:11, color:'var(--text-tertiary)' }}>
+          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#1D9E75',display:'inline-block' }} /> Abgeschlossen</span>
+          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#378ADD',display:'inline-block' }} /> Geplanter Abschluss</span>
+          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#185FA5',display:'inline-block' }} /> Aktueller Monat</span>
+        </div>
+      </Card>
 
     </div>
   )
