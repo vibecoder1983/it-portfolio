@@ -7,8 +7,25 @@ import { sb } from '../lib/supabase'
 export function Roadmap({ projects }) {
   const [zoom, setZoom] = useState('month')
 
+  const availableYears = useMemo(() => {
+    const years = projects.flatMap(p => [p.start_date, p.end_date]).filter(Boolean).map(s => new Date(s).getFullYear())
+    return [...new Set(years)].sort()
+  }, [projects])
+
+  const [yearFilter, setYearFilter] = useState('all')
+
+  const filteredProjects = useMemo(() => {
+    if (yearFilter === 'all') return projects
+    return projects.filter(p => {
+      const sy = p.start_date ? new Date(p.start_date).getFullYear() : null
+      const ey = p.end_date   ? new Date(p.end_date).getFullYear()   : null
+      const y = parseInt(yearFilter)
+      return sy === y || ey === y || (sy && ey && sy <= y && ey >= y)
+    })
+  }, [projects, yearFilter])
+
   const { cols, minD, totalMs } = useMemo(() => {
-    const allDates = projects.flatMap(p => [p.start_date, p.end_date]).filter(Boolean).map(s => new Date(s))
+    const allDates = filteredProjects.flatMap(p => [p.start_date, p.end_date]).filter(Boolean).map(s => new Date(s))
     if (!allDates.length) return { cols: [], minD: null, totalMs: 1 }
     const mn = new Date(Math.min(...allDates)); mn.setDate(1)
     const mx = new Date(Math.max(...allDates)); mx.setDate(1); mx.setMonth(mx.getMonth()+1)
@@ -27,7 +44,7 @@ export function Roadmap({ projects }) {
       }
     }
     return { cols, minD: mn, totalMs: mx - mn }
-  }, [projects, zoom])
+  }, [filteredProjects, zoom])
 
   const pct = d => Math.max(0, Math.min(100, (d - minD) / totalMs * 100))
 
@@ -47,6 +64,10 @@ export function Roadmap({ projects }) {
   return (
     <Card>
       <CardHeader title="Roadmap — Mehrjahresübersicht">
+        <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} style={{ fontSize:12,padding:'5px 8px',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',background:'var(--bg-primary)' }}>
+          <option value="all">Alle Jahre</option>
+          {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
         <select value={zoom} onChange={e => setZoom(e.target.value)} style={{ fontSize:12,padding:'5px 8px',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',background:'var(--bg-primary)' }}>
           <option value="month">Monate</option><option value="quarter">Quartale</option>
         </select>
@@ -65,7 +86,7 @@ export function Roadmap({ projects }) {
           </div>
           {/* Bars */}
           <div style={{ marginTop:8 }}>
-            {projects.filter(p => p.start_date && p.end_date).map(p => {
+            {filteredProjects.filter(p => p.start_date && p.end_date).map(p => {
               const l = pct(new Date(p.start_date)).toFixed(2)
               const w = (pct(new Date(p.end_date)) - pct(new Date(p.start_date))).toFixed(2)
               return (
