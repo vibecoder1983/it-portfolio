@@ -2,8 +2,8 @@ import React from 'react'
 import styles from './Layout.module.css'
 
 const NAV = [
-  { section: 'Planung' },
   { panel: 'dashboard',   icon: 'ti-layout-dashboard', label: 'Dashboard' },
+  { section: 'Planung' },
   { panel: 'demand',      icon: 'ti-inbox',             label: 'Demand' },
   { panel: 'portfolio',   icon: 'ti-briefcase',         label: 'Portfolio' },
   { panel: 'roadmap',     icon: 'ti-road',              label: 'Roadmap' },

@@ -1,9 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Badge, Btn, Card, CardHeader, Modal, ModalActions, FormRow, FormGrid, showToast } from './UI'
 import { D_STATUSES, BADGE_CLASS, fmt } from '../lib/constants'
 import { sb } from '../lib/supabase'
 
-const EMPTY = { title:'', req:'', start_date:'', prio:'Hoch', val:'Sehr hoch', effort:'', budget:'', description:'' }
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]
+const ALLOWED_EXT = '.pdf, .docx, .xlsx'
+
+const EMPTY = { title:'', req:'', start_date:'', go_live_date:'', prio:'Hoch', val:'Sehr hoch', effort:'', budget:'', roi:'', payback_period:'', description:'', attachments:[] }
 
 export default function Demand({ demands, setDemands, onPromote }) {
   const [filter, setFilter] = useState('')
@@ -11,6 +18,8 @@ export default function Demand({ demands, setDemands, onPromote }) {
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef()
 
   const list = filter ? demands.filter(d => d.status === filter) : demands
 
@@ -26,7 +35,7 @@ export default function Demand({ demands, setDemands, onPromote }) {
   }
 
   function openEdit(d) {
-    setForm({ title: d.title||'', req: d.req||'', start_date: d.start_date||'', prio: d.prio||'Hoch', val: d.val||'Sehr hoch', effort: d.effort||'', budget: d.budget||'', description: d.description||'' })
+    setForm({ title: d.title||'', req: d.req||'', start_date: d.start_date||'', go_live_date: d.go_live_date||'', prio: d.prio||'Hoch', val: d.val||'Sehr hoch', effort: d.effort||'', budget: d.budget||'', roi: d.roi||'', payback_period: d.payback_period||'', description: d.description||'', attachments: d.attachments||[] })
     setEditId(d.id)
     setModal(true)
   }
@@ -36,7 +45,7 @@ export default function Demand({ demands, setDemands, onPromote }) {
   async function save() {
     if (!form.title.trim()) return
     setSaving(true)
-    const payload = { ...form, effort: parseInt(form.effort)||0, budget: parseInt(form.budget)||0, start_date: form.start_date||null }
+    const payload = { ...form, effort: parseInt(form.effort)||0, budget: parseInt(form.budget)||0, roi: form.roi ? parseFloat(form.roi) : null, payback_period: form.payback_period ? parseInt(form.payback_period) : null, start_date: form.start_date||null, go_live_date: form.go_live_date||null }
     let error
     if (editId) {
       ;({ error } = await sb.from('demands').update(payload).eq('id', editId))
@@ -54,6 +63,35 @@ export default function Demand({ demands, setDemands, onPromote }) {
   }
 
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  async function uploadFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!ALLOWED_TYPES.includes(file.type)) { showToast('Nur PDF, DOCX oder XLSX erlaubt', true); return }
+    setUploading(true)
+    const path = `demand-${Date.now()}-${file.name.replace(/\s+/g, '_')}`
+    const { error } = await sb.storage.from('demand-attachments').upload(path, file)
+    if (error) { showToast('Upload fehlgeschlagen: ' + error.message, true); setUploading(false); return }
+    const { data: { publicUrl } } = sb.storage.from('demand-attachments').getPublicUrl(path)
+    const att = { name: file.name, path, url: publicUrl, type: file.type, size: file.size }
+    setForm(p => ({ ...p, attachments: [...(p.attachments||[]), att] }))
+    showToast('Datei hochgeladen')
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function removeAttachment(idx) {
+    const att = form.attachments[idx]
+    await sb.storage.from('demand-attachments').remove([att.path])
+    setForm(p => ({ ...p, attachments: p.attachments.filter((_,i) => i !== idx) }))
+  }
+
+  function fileIcon(type) {
+    if (type?.includes('pdf')) return 'ti-file-type-pdf'
+    if (type?.includes('word')) return 'ti-file-type-docx'
+    if (type?.includes('sheet')) return 'ti-file-spreadsheet'
+    return 'ti-file'
+  }
 
   return (
     <>
@@ -112,29 +150,57 @@ export default function Demand({ demands, setDemands, onPromote }) {
         </div>
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-inbox" /> Vorhaben erfassen / bearbeiten</>}>
+      <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-inbox" /> Vorhaben erfassen / bearbeiten</>} wide>
         <FormRow label="Titel"><input value={form.title} onChange={e => f('title', e.target.value)} placeholder="Bezeichnung" /></FormRow>
         <FormGrid>
           <FormRow label="Antragsteller"><input value={form.req} onChange={e => f('req', e.target.value)} /></FormRow>
-          <FormRow label="Wunschstart"><input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} /></FormRow>
+          <FormRow label="Plan-Start"><input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} /></FormRow>
         </FormGrid>
         <FormGrid>
+          <FormRow label="Geplanter Go-Live"><input type="date" value={form.go_live_date} onChange={e => f('go_live_date', e.target.value)} /></FormRow>
           <FormRow label="Priorität">
             <select value={form.prio} onChange={e => f('prio', e.target.value)}>
               {['Hoch','Mittel','Niedrig'].map(o => <option key={o}>{o}</option>)}
             </select>
           </FormRow>
+        </FormGrid>
+        <FormGrid>
           <FormRow label="Geschäftswert">
             <select value={form.val} onChange={e => f('val', e.target.value)}>
               {['Sehr hoch','Hoch','Mittel','Gering'].map(o => <option key={o}>{o}</option>)}
             </select>
           </FormRow>
+          <FormRow label="Aufwand IT (PT)"><input type="number" value={form.effort} onChange={e => f('effort', e.target.value)} min="1" /></FormRow>
         </FormGrid>
         <FormGrid>
-          <FormRow label="Aufwand (PT)"><input type="number" value={form.effort} onChange={e => f('effort', e.target.value)} min="1" /></FormRow>
           <FormRow label="Budget (€)"><input type="number" value={form.budget} onChange={e => f('budget', e.target.value)} /></FormRow>
+          <FormRow label="ROI (%)"><input type="number" value={form.roi} onChange={e => f('roi', e.target.value)} placeholder="z.B. 25" step="0.1" /></FormRow>
+        </FormGrid>
+        <FormGrid>
+          <FormRow label="Payback Period (Monate)"><input type="number" value={form.payback_period} onChange={e => f('payback_period', e.target.value)} placeholder="z.B. 18" min="1" /></FormRow>
+          <div />
         </FormGrid>
         <FormRow label="Beschreibung"><textarea value={form.description} onChange={e => f('description', e.target.value)} rows={3} /></FormRow>
+
+        {/* Attachments */}
+        <div style={{ marginTop:'1rem' }}>
+          <div style={{ fontSize:12,fontWeight:500,color:'var(--text-secondary)',marginBottom:6 }}>Anhänge <span style={{ fontWeight:400,color:'var(--text-tertiary)' }}>(PDF, DOCX, XLSX)</span></div>
+          {(form.attachments||[]).map((att, i) => (
+            <div key={i} style={{ display:'flex',alignItems:'center',gap:8,padding:'5px 8px',background:'var(--bg-secondary)',borderRadius:'var(--radius-md)',marginBottom:4,fontSize:12 }}>
+              <i className={`ti ${fileIcon(att.type)}`} style={{ fontSize:14,color:'var(--text-secondary)' }} />
+              <a href={att.url} target="_blank" rel="noreferrer" style={{ flex:1,color:'var(--text-primary)',textDecoration:'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{att.name}</a>
+              <span style={{ fontSize:11,color:'var(--text-tertiary)' }}>{(att.size/1024).toFixed(0)} KB</span>
+              <Btn size="sm" variant="danger" onClick={() => removeAttachment(i)}><i className="ti ti-trash" /></Btn>
+            </div>
+          ))}
+          <div style={{ display:'flex',alignItems:'center',gap:8,marginTop:4 }}>
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx" style={{ display:'none' }} onChange={uploadFile} />
+            <Btn size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading ? <><i className="ti ti-loader" style={{ animation:'spin .6s linear infinite',display:'inline-block' }} /> Lädt hoch...</> : <><i className="ti ti-upload" /> Datei anhängen</>}
+            </Btn>
+          </div>
+        </div>
+
         <ModalActions>
           <Btn onClick={() => setModal(false)}>Abbrechen</Btn>
           <Btn variant="primary" disabled={saving} onClick={save}>
