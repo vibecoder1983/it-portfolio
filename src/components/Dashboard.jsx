@@ -62,7 +62,7 @@ export default function Dashboard({ demands, projects }) {
   }
 
   const catCnt = {}
-  projects.forEach(p => { catCnt[p.cat] = (catCnt[p.cat]||0) + 1 })
+  activeProjects.forEach(p => { catCnt[p.cat] = (catCnt[p.cat]||0) + 1 })
   const catEntries = Object.entries(catCnt).sort((a,b) => b[1]-a[1])
 
   // 12-Monats-Fenster: 10 Monate zurück + aktueller + 1 voraus
@@ -144,7 +144,7 @@ export default function Dashboard({ demands, projects }) {
       {/* Portfolio Detail */}
       <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem' }}>
         <Card>
-          <CardHeader title="Projekte nach Phase" />
+          <CardHeader title="Laufende Projekte nach Phase" />
           {PHASES.map((ph, i) => (
             <div key={ph} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'0.5px solid var(--border-light)' }}>
               <div style={{ width:10,height:10,borderRadius:2,background:PHASE_COLORS[i],flexShrink:0 }} />
@@ -158,13 +158,13 @@ export default function Dashboard({ demands, projects }) {
         </Card>
 
         <Card>
-          <CardHeader title="Projekte nach Kategorie" />
+          <CardHeader title="Laufende Projekte nach Kategorie" />
           {catEntries.length ? catEntries.map(([cat, count]) => (
             <div key={cat} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'0.5px solid var(--border-light)' }}>
               <div style={{ width:10,height:10,borderRadius:2,background:CAT_COLORS[cat]||'#B4B2A9',flexShrink:0 }} />
               <span style={{ flex:1,fontSize:13 }}>{cat}</span>
               <div style={{ width:80,background:'var(--bg-secondary)',borderRadius:4,height:6 }}>
-                <div style={{ width:`${count/projects.length*100}%`,height:6,borderRadius:4,background:CAT_COLORS[cat]||'#B4B2A9' }} />
+                <div style={{ width:`${activeProjects.length ? count/activeProjects.length*100 : 0}%`,height:6,borderRadius:4,background:CAT_COLORS[cat]||'#B4B2A9' }} />
               </div>
               <span style={{ fontSize:13,fontWeight:500,minWidth:16,textAlign:'right' }}>{count}</span>
             </div>
