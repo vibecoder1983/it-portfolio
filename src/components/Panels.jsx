@@ -91,11 +91,16 @@ export function Roadmap({ projects }) {
               const w = (pct(new Date(p.end_date)) - pct(new Date(p.start_date))).toFixed(2)
               return (
                 <div key={p.id} style={{ display:'flex',alignItems:'center',minHeight:36,marginBottom:3 }}>
-                  <div style={{ width:150,minWidth:150,fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingRight:8 }}>{p.title}</div>
+                  <div style={{ width:150,minWidth:150,fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingRight:8,display:'flex',alignItems:'center',gap:5 }}>
+                    {p.abgeschlossen && <i className="ti ti-circle-check" style={{ color:'#1D9E75',fontSize:13,flexShrink:0 }} title="Abgeschlossen" />}
+                    <span style={{ overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{p.title}</span>
+                  </div>
                   <div style={{ flex:1,position:'relative',minHeight:28 }}>
                     {cols.map((_,i) => <div key={i} style={{ position:'absolute',width:`${100/cols.length}%`,left:`${i*100/cols.length}%`,borderRight:'0.5px solid var(--border-light)',top:0,bottom:0 }} />)}
-                    <div style={{ position:'absolute',left:`${l}%`,width:`${w}%`,height:22,top:4,borderRadius:4,background:p.color,display:'flex',alignItems:'center',padding:'0 6px',fontSize:11,fontWeight:500,color:'#fff',overflow:'hidden',whiteSpace:'nowrap',cursor:'pointer' }}
-                      title={`${p.title}: ${fmt(p.start_date)} – ${fmt(p.end_date)}`}>{p.title}</div>
+                    <div style={{ position:'absolute',left:`${l}%`,width:`${w}%`,height:22,top:4,borderRadius:4,background: p.abgeschlossen ? '#1D9E75' : p.color,display:'flex',alignItems:'center',padding:'0 6px',fontSize:11,fontWeight:500,color:'#fff',overflow:'hidden',whiteSpace:'nowrap',cursor:'pointer',gap:5 }}
+                      title={`${p.title}: ${fmt(p.start_date)} – ${fmt(p.end_date)}${p.abgeschlossen ? ' ✓ Abgeschlossen' : ''}`}>
+                      {p.abgeschlossen && <i className="ti ti-circle-check" style={{ fontSize:13,flexShrink:0 }} />}
+                    </div>
                   </div>
                 </div>
               )
