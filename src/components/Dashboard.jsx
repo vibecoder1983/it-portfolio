@@ -61,18 +61,18 @@ export default function Dashboard({ demands, projects }) {
   projects.forEach(p => { catCnt[p.cat] = (catCnt[p.cat]||0) + 1 })
   const catEntries = Object.entries(catCnt).sort((a,b) => b[1]-a[1])
 
-  // Letzte 12 Monate aufbauen
+  // 12-Monats-Fenster: 10 Monate zurück + aktueller + 1 voraus
   const now = new Date()
   const last12 = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1)
+    const d = new Date(now.getFullYear(), now.getMonth() - 10 + i, 1)
     return { year: d.getFullYear(), month: d.getMonth(), label: MONTHS_SHORT[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2) }
   })
 
-  // Projekte pro Monat (nach end_date)
+  // Nur abgeschlossene Projekte, gruppiert nach end_date
   const projectsByMonth = last12.map(({ year, month }) => ({
-    ...{ year, month },
+    year, month,
     items: projects.filter(p => {
-      if (!p.end_date) return false
+      if (!p.abgeschlossen || !p.end_date) return false
       const d = new Date(p.end_date)
       return d.getFullYear() === year && d.getMonth() === month
     })
@@ -170,74 +170,68 @@ export default function Dashboard({ demands, projects }) {
 
       </div>
 
-      {/* Projektabschlüsse Timeline */}
+      {/* Projektabschlüsse Tabelle */}
       <Card style={{ marginTop:'1rem' }}>
         <CardHeader title="Projektabschlüsse — Letzte 12 Monate" />
         <div style={{ overflowX:'auto' }}>
-          <div style={{ minWidth:700, paddingBottom:4 }}>
-
-            {/* Balken */}
-            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:90, marginBottom:8 }}>
-              {projectsByMonth.map(({ year, month, items }, i) => {
-                const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
-                const barH = items.length ? Math.max(20, (items.length / maxPerMonth) * 80) : 0
-                return (
-                  <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%' }}>
-                    {items.length > 0 && (
-                      <div style={{ fontSize:11, fontWeight:600, color: isCurrentMonth ? '#185FA5' : '#1D9E75', marginBottom:3 }}>{items.length}</div>
-                    )}
-                    <div
-                      title={items.length ? items.map(p => p.title).join('\n') : ''}
-                      style={{
-                        width:'100%', borderRadius:'4px 4px 0 0',
-                        height: barH || 3,
-                        background: items.length
-                          ? (isCurrentMonth ? '#185FA5' : items.some(p => p.abgeschlossen) ? '#1D9E75' : '#378ADD')
-                          : 'var(--bg-secondary)',
-                        cursor: items.length ? 'pointer' : 'default',
-                      }}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Trennlinie */}
-            <div style={{ borderTop:'1.5px solid var(--border-strong)', marginBottom:6 }} />
-
-            {/* Monatslabels */}
-            <div style={{ display:'flex', gap:6 }}>
-              {projectsByMonth.map(({ year, month, label }, i) => {
-                const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
-                return (
-                  <div key={i} style={{ flex:1, textAlign:'center', fontSize:10, fontWeight: isCurrentMonth ? 600 : 400, color: isCurrentMonth ? '#185FA5' : 'var(--text-tertiary)', whiteSpace:'nowrap' }}>
-                    {label}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Projektlabels */}
-            <div style={{ marginTop:10, display:'flex', gap:6 }}>
-              {projectsByMonth.map(({ items }, i) => (
-                <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', gap:3 }}>
-                  {items.map(p => (
-                    <div key={p.id} title={p.title}
-                      style={{ background: p.abgeschlossen ? '#EAF3DE' : '#E6F1FB', borderRadius:3, padding:'2px 4px', fontSize:9, fontWeight:500, color: p.abgeschlossen ? '#27500A' : '#0C447C', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>
-                      {p.title}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-
-          </div>
-        </div>
-
-        <div style={{ display:'flex', gap:16, marginTop:10, fontSize:11, color:'var(--text-tertiary)' }}>
-          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#1D9E75',display:'inline-block' }} /> Abgeschlossen</span>
-          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#378ADD',display:'inline-block' }} /> Geplanter Abschluss</span>
-          <span style={{ display:'flex',alignItems:'center',gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#185FA5',display:'inline-block' }} /> Aktueller Monat</span>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr>
+                {['Monat','Projekt','Kategorie','Budget (€)','Fortschritt','Status'].map(h => (
+                  <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, fontWeight:500, color:'var(--text-tertiary)', borderBottom:'0.5px solid var(--border-light)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const rows = []
+                last12.forEach(({ year, month, label }) => {
+                  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
+                  const monthProjects = projects.filter(p => {
+                    if (!p.end_date) return false
+                    const d = new Date(p.end_date)
+                    return d.getFullYear() === year && d.getMonth() === month
+                  })
+                  if (monthProjects.length === 0) {
+                    rows.push(
+                      <tr key={`${year}-${month}`} style={{ borderBottom:'0.5px solid var(--border-light)', background: isCurrentMonth ? '#F0F6FF' : 'transparent' }}>
+                        <td style={{ padding:'8px 10px', fontWeight: isCurrentMonth ? 600 : 400, color: isCurrentMonth ? '#185FA5' : 'var(--text-secondary)', whiteSpace:'nowrap' }}>{label}</td>
+                        <td colSpan={5} style={{ padding:'8px 10px', color:'var(--text-tertiary)', fontSize:12 }}>—</td>
+                      </tr>
+                    )
+                  } else {
+                    monthProjects.forEach((p, pi) => {
+                      rows.push(
+                        <tr key={`${year}-${month}-${p.id}`} style={{ borderBottom:'0.5px solid var(--border-light)', background: isCurrentMonth ? '#F0F6FF' : p.abgeschlossen ? '#F6FBF0' : 'transparent' }}>
+                          {pi === 0 && (
+                            <td rowSpan={monthProjects.length} style={{ padding:'8px 10px', fontWeight: isCurrentMonth ? 600 : 500, color: isCurrentMonth ? '#185FA5' : 'var(--text-secondary)', verticalAlign:'top', whiteSpace:'nowrap', borderRight:'0.5px solid var(--border-light)' }}>{label}</td>
+                          )}
+                          <td style={{ padding:'8px 10px', fontWeight:500 }}>{p.title}</td>
+                          <td style={{ padding:'8px 10px' }}><Badge label={p.cat} /></td>
+                          <td style={{ padding:'8px 10px', fontSize:12 }}>{p.budget ? p.budget.toLocaleString('de-DE') + ' €' : '—'}</td>
+                          <td style={{ padding:'8px 10px' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <div style={{ width:60, background:'var(--bg-secondary)', borderRadius:3, height:5 }}>
+                                <div style={{ width:`${p.progress||0}%`, height:5, borderRadius:3, background: p.abgeschlossen ? '#1D9E75' : p.color }} />
+                              </div>
+                              <span style={{ fontSize:11 }}>{p.progress||0}%</span>
+                            </div>
+                          </td>
+                          <td style={{ padding:'8px 10px' }}>
+                            {p.abgeschlossen
+                              ? <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:500, color:'#1D9E75' }}><i className="ti ti-circle-check" /> Abgeschlossen</span>
+                              : <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:500, color:'#EF9F27' }}><i className="ti ti-clock" /> In Bearbeitung</span>
+                            }
+                          </td>
+                        </tr>
+                      )
+                    })
+                  }
+                })
+                return rows
+              })()}
+            </tbody>
+          </table>
         </div>
       </Card>
 
