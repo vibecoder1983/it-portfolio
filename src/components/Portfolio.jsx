@@ -227,8 +227,19 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
   const abgeschlossen = projects.filter(p =>  p.abgeschlossen)
 
   function ProjectCard({ p }) {
-    const phIdx = PHASES.indexOf(p.phase)
-    const res   = assignments.filter(a => a.proj_id === p.id)
+    const phIdx   = PHASES.indexOf(p.phase)
+    const res     = assignments.filter(a => a.proj_id === p.id)
+    const today   = new Date()
+    // Kumulierte Stunden bis heute: h/Woche × gelebte Wochen je Buchung
+    const kumulH  = Math.round(res.reduce((s, a) => {
+      if (!a.from_date || !a.to_date) return s
+      const start = new Date(a.from_date)
+      const end   = new Date(a.to_date)
+      if (start > today) return s // noch nicht begonnen
+      const effectiveEnd = end < today ? end : today
+      const weeks = (effectiveEnd - start) / (1000 * 60 * 60 * 24 * 7)
+      return s + (a.hours || 0) * weeks
+    }, 0))
     return (
       <div onClick={() => setDetail(p.id)}
         style={{ background: p.abgeschlossen ? 'var(--bg-secondary)' : 'var(--bg-primary)', border:'0.5px solid var(--border-light)', borderRadius:'var(--radius-lg)', padding:'1rem', marginBottom:'.75rem', cursor:'pointer', transition:'border-color .15s', opacity: p.abgeschlossen ? 0.75 : 1 }}
@@ -258,8 +269,19 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
             {!p.abgeschlossen && <Btn size="sm" variant="danger" title="Zurück in Demand-Backlog" onClick={e => { e.stopPropagation(); onDemote(p.id) }}><i className="ti ti-arrow-left" /> Demand</Btn>}
           </div>
         </div>
-        <div style={{ fontSize:11,color:'var(--text-secondary)',marginBottom:8 }}>
-          {fmt(p.start_date)} – {fmt(p.end_date)} · {p.budget ? (p.budget/1000).toFixed(0)+'k €' : '—'} · {res.length} MA
+        <div style={{ fontSize:11,color:'var(--text-secondary)',marginBottom:8,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' }}>
+          <span>{fmt(p.start_date)} – {fmt(p.end_date)}</span>
+          <span>·</span>
+          <span>{p.budget ? (p.budget/1000).toFixed(0)+'k €' : '—'}</span>
+          <span>·</span>
+          <span>{res.length} MA</span>
+          {kumulH > 0 && <>
+            <span>·</span>
+            <span style={{ display:'inline-flex',alignItems:'center',gap:3,color:'#185FA5',fontWeight:500 }}>
+              <i className="ti ti-clock" style={{ fontSize:11 }} />
+              {kumulH}h kumuliert
+            </span>
+          </>}
         </div>
         <div style={{ display:'flex',gap:10,alignItems:'center' }}>
           <div style={{ flex:1,background:'var(--bg-secondary)',borderRadius:4,height:5 }}>

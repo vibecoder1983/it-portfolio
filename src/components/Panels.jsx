@@ -277,14 +277,35 @@ export function Capacity({ mitarbeiter, assignments }) {
 /* ══════════════════ RESOURCES ══════════════════ */
 export function Resources({ assignments, setAssignments, projects, mitarbeiter }) {
   const [modal, setModal] = useState(false)
+  const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({ ma_id:'', proj_id:'', phase:'Preparation', hours:16, from_date:'', to_date:'', note:'' })
+
+  function openNew() {
+    setEditId(null)
+    setForm({ ma_id: mitarbeiter[0]?.id||'', proj_id: projects[0]?.id||'', phase:'Preparation', hours:16, from_date:'', to_date:'', note:'' })
+    setModal(true)
+  }
+
+  function openEdit(a) {
+    setEditId(a.id)
+    setForm({ ma_id: a.ma_id, proj_id: a.proj_id, phase: a.phase, hours: a.hours, from_date: a.from_date||'', to_date: a.to_date||'', note: a.note||'' })
+    setModal(true)
+  }
 
   async function save() {
     const payload = { ...form, ma_id: parseInt(form.ma_id), proj_id: parseInt(form.proj_id), hours: parseInt(form.hours)||16, from_date: form.from_date||null, to_date: form.to_date||null }
-    const res = await sb.from('assignments').insert(payload).select().single()
-    if (res.error) { showToast('Fehler: '+res.error.message, true); return }
-    setAssignments(prev => [...prev, res.data])
-    showToast('Buchung gespeichert'); setModal(false)
+    if (editId) {
+      const { error } = await sb.from('assignments').update(payload).eq('id', editId)
+      if (error) { showToast('Fehler: '+error.message, true); return }
+      setAssignments(prev => prev.map(a => a.id === editId ? { ...a, ...payload } : a))
+      showToast('Buchung aktualisiert')
+    } else {
+      const res = await sb.from('assignments').insert(payload).select().single()
+      if (res.error) { showToast('Fehler: '+res.error.message, true); return }
+      setAssignments(prev => [...prev, res.data])
+      showToast('Buchung gespeichert')
+    }
+    setModal(false)
   }
 
   async function remove(id) {
@@ -300,12 +321,12 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
     <>
       <Card>
         <CardHeader title="Ressourcenzuweisung — Übersicht">
-          <Btn variant="primary" onClick={() => { setForm({ ma_id: mitarbeiter[0]?.id||'', proj_id: projects[0]?.id||'', phase:'Preparation', hours:16, from_date:'', to_date:'', note:'' }); setModal(true) }}>
+          <Btn variant="primary" onClick={openNew}>
             <i className="ti ti-plus" /> Buchen
           </Btn>
         </CardHeader>
         <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-          <thead><tr>{['Mitarbeiter','Projekt','Phase','h/Woche','Von','Bis','≈ PT',''].map(h=><th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
+          <thead><tr>{['Mitarbeiter','Projekt','Phase','h/Woche','Von','Bis','≈ PT','',''].map(h=><th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
           <tbody>
             {assignments.map(a => {
               const ma = mitarbeiter.find(m=>m.id===a.ma_id)
@@ -321,6 +342,7 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
                   <td style={{ padding:'8px 10px',fontSize:12 }}>{fmt(a.from_date)}</td>
                   <td style={{ padding:'8px 10px',fontSize:12 }}>{fmt(a.to_date)}</td>
                   <td style={{ padding:'8px 10px',fontSize:12,color:'var(--text-secondary)' }}>≈{pt} PT</td>
+                  <td style={{ padding:'8px 10px' }}><Btn size="sm" onClick={()=>openEdit(a)}><i className="ti ti-edit" /></Btn></td>
                   <td style={{ padding:'8px 10px' }}><Btn variant="danger" size="sm" onClick={()=>remove(a.id)}><i className="ti ti-trash" /></Btn></td>
                 </tr>
               )
@@ -329,7 +351,7 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
         </table>
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-user-plus" /> Ressource buchen</>}>
+      <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-user-plus" /> {editId ? 'Buchung bearbeiten' : 'Ressource buchen'}</>}>
         <FormGrid>
           <FormRow label="Mitarbeiter"><select value={form.ma_id} onChange={e=>f('ma_id',e.target.value)}>{mitarbeiter.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></FormRow>
           <FormRow label="Projekt"><select value={form.proj_id} onChange={e=>f('proj_id',e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></FormRow>
@@ -343,7 +365,7 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
           <FormRow label="Bis"><input type="date" value={form.to_date} onChange={e=>f('to_date',e.target.value)} /></FormRow>
         </FormGrid>
         <FormRow label="Notiz"><input value={form.note} onChange={e=>f('note',e.target.value)} /></FormRow>
-        <ModalActions><Btn onClick={()=>setModal(false)}>Abbrechen</Btn><Btn variant="primary" onClick={save}><i className="ti ti-check" /> Buchen</Btn></ModalActions>
+        <ModalActions><Btn onClick={()=>setModal(false)}>Abbrechen</Btn><Btn variant="primary" onClick={save}><i className="ti ti-check" /> {editId ? 'Speichern' : 'Buchen'}</Btn></ModalActions>
       </Modal>
     </>
   )
