@@ -265,7 +265,7 @@ export default function Portfolio({ projects, setProjects, mitarbeiter, assignme
         <FormGrid>
           <FormRow label="Kategorie">
             <select value={form.cat} onChange={e => f('cat', e.target.value)}>
-              {['ERP','Security','Infrastruktur','Kundenfacing','Data & Analytics','Intern','Sonstiges'].map(o=><option key={o}>{o}</option>)}
+              {['ERP','Data & Analytics','Business Applications','Security','Infrastructure','Emerging Technologies'].map(o=><option key={o}>{o}</option>)}
             </select>
           </FormRow>
           <FormRow label="Phase">
