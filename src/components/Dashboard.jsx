@@ -42,14 +42,18 @@ export default function Dashboard({ demands, projects }) {
   const statusCount = D_STATUSES.map(s => ({ s, count: demands.filter(d => d.status === s).length }))
 
   /* ── Portfolio KPIs ── */
+  const activeProjects     = projects.filter(p => !p.abgeschlossen)
+  const twelveMonthsAgo    = new Date(new Date().getFullYear(), new Date().getMonth() - 11, 1)
+  const completedProjects  = projects.filter(p => p.abgeschlossen && p.end_date && new Date(p.end_date) >= twelveMonthsAgo)
+
   const phaseCnt = {}
   PHASES.forEach(p => (phaseCnt[p] = 0))
-  projects.forEach(p => { phaseCnt[p.phase] = (phaseCnt[p.phase] || 0) + 1 })
+  activeProjects.forEach(p => { phaseCnt[p.phase] = (phaseCnt[p.phase] || 0) + 1 })
 
-  const totalBudget   = projects.reduce((s, p) => s + (p.budget || 0), 0)
-  const avgProgress   = projects.length ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length) : 0
+  const totalBudget   = activeProjects.reduce((s, p) => s + (p.budget || 0), 0)
+  const avgProgress   = activeProjects.length ? Math.round(activeProjects.reduce((s, p) => s + (p.progress || 0), 0) / activeProjects.length) : 0
 
-  const allDates = projects.flatMap(p => [p.start_date, p.end_date]).filter(Boolean).map(s => new Date(s))
+  const allDates = activeProjects.flatMap(p => [p.start_date, p.end_date]).filter(Boolean).map(s => new Date(s))
   let horizon = '—'
   if (allDates.length) {
     const mn = Math.min(...allDates.map(d => d.getFullYear()))
@@ -129,11 +133,12 @@ export default function Dashboard({ demands, projects }) {
       <SectionTitle icon="ti-briefcase" title="IT Portfolio" />
 
       {/* Portfolio Metrics */}
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:'1rem' }}>
-        <MetricCard label="Aktive Projekte"   value={projects.length}  sub="Im Portfolio" />
-        <MetricCard label="Budget gesamt"     value={totalBudget > 0 ? (totalBudget/1_000_000).toFixed(1)+' Mio €' : '—'} sub="Alle Projekte" />
-        <MetricCard label="Ø Fortschritt"     value={avgProgress+'%'}  sub="Über alle Projekte" color={avgProgress > 75 ? '#1D9E75' : avgProgress > 40 ? '#EF9F27' : undefined} />
-        <MetricCard label="Roadmap-Horizont"  value={horizon}          sub="Jahre" />
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:'1rem' }}>
+        <MetricCard label="Aktive Projekte"       value={activeProjects.length}    sub="Laufende Projekte" />
+        <MetricCard label="Abgeschlossen"         value={completedProjects.length} sub="Letzte 12 Monate" color={completedProjects.length > 0 ? '#1D9E75' : undefined} />
+        <MetricCard label="Budget gesamt"         value={totalBudget > 0 ? (totalBudget/1_000_000).toFixed(1)+' Mio €' : '—'} sub="Laufende Projekte" />
+        <MetricCard label="Ø Fortschritt"         value={avgProgress+'%'}  sub="Laufende Projekte" color={avgProgress > 75 ? '#1D9E75' : avgProgress > 40 ? '#EF9F27' : undefined} />
+        <MetricCard label="Roadmap-Horizont"      value={horizon}          sub="Jahre" />
       </div>
 
       {/* Portfolio Detail */}
