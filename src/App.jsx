@@ -56,39 +56,65 @@ export default function App() {
       budget: d.budget || 0, progress: 0,
       pm_it: '', pm_biz: d.req || '',
       color, milestones: [],
-      // Business Case Daten übertragen
       business_case: d.business_case || null,
       roi: d.roi || null,
       payback_period: d.payback_period || null,
+      source_demand_id: demandId,  // Verknüpfung zum Original-Demand
     }
     const res = await sb.from('projects').insert(payload).select().single()
     if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
-    // Demand als "Im Portfolio" markieren statt löschen — BC-Referenz bleibt erhalten
-    const { error: updErr } = await sb.from('demands').update({ status: 'Im Portfolio', promoted_project_id: res.data.id }).eq('id', demandId)
+    // Demand bekommt Status "Im Portfolio" — ID bleibt erhalten
+    const { error: updErr } = await sb.from('demands').update({
+      status: 'Im Portfolio', promoted_project_id: res.data.id
+    }).eq('id', demandId)
     if (updErr) { showToast('Fehler beim Aktualisieren des Demands', true); return }
     setProjects(prev => [...prev, { ...res.data, milestones: [] }])
-    setDemands(prev => prev.map(x => x.id === demandId ? { ...x, status: 'Im Portfolio', promoted_project_id: res.data.id } : x))
+    setDemands(prev => prev.map(x => x.id === demandId
+      ? { ...x, status: 'Im Portfolio', promoted_project_id: res.data.id } : x))
     showToast('Demand ins Portfolio übernommen')
   }
 
   async function demoteToBacklog(projectId) {
     const p = projects.find(x => x.id === projectId)
     if (!p) return
-    const payload = {
-      title: p.title, req: p.pm_biz || '', prio: 'Hoch', val: 'Hoch',
-      effort: 0, budget: p.budget || 0,
-      start_date: p.start_date || null, description: '',
-      status: 'In Bewertung',
-      // Business Case Daten zurückübertragen
-      business_case: p.business_case || null,
-      roi: p.roi || null,
-      payback_period: p.payback_period || null,
+
+    // Originalen Demand suchen (über source_demand_id)
+    const originalDemand = p.source_demand_id ? demands.find(x => x.id === p.source_demand_id) : null
+
+    if (originalDemand) {
+      // Original-Demand reaktivieren — ID bleibt erhalten
+      const update = {
+        status: 'In Bewertung',
+        promoted_project_id: null,
+        title: p.title,
+        budget: p.budget || 0,
+        start_date: p.start_date || null,
+        business_case: p.business_case || originalDemand.business_case || null,
+        roi: p.roi || originalDemand.roi || null,
+        payback_period: p.payback_period || originalDemand.payback_period || null,
+      }
+      const { error: updErr } = await sb.from('demands').update(update).eq('id', originalDemand.id)
+      if (updErr) { showToast('Fehler beim Wiederherstellen des Demands', true); return }
+      setDemands(prev => prev.map(x => x.id === originalDemand.id ? { ...x, ...update } : x))
+    } else {
+      // Kein Original-Demand gefunden → neuen anlegen
+      const payload = {
+        title: p.title, req: p.pm_biz || '', prio: 'Hoch', val: 'Hoch',
+        effort: 0, budget: p.budget || 0,
+        start_date: p.start_date || null, description: '',
+        status: 'In Bewertung',
+        business_case: p.business_case || null,
+        roi: p.roi || null,
+        payback_period: p.payback_period || null,
+      }
+      const res = await sb.from('demands').insert(payload).select().single()
+      if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
+      setDemands(prev => [...prev, res.data])
     }
-    const res = await sb.from('demands').insert(payload).select().single()
-    if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
+
+    // Projekt löschen — Demand-ID bleibt erhalten
     const { error: delErr } = await sb.from('projects').delete().eq('id', projectId)
     if (delErr) { showToast('Fehler beim Löschen des Projekts', true); return }
-    setDemands(prev => [...prev, res.data])
     setProjects(prev => prev.filter(x => x.id !== projectId))
     showToast('Projekt zurück in den Demand-Backlog verschoben')
   }
