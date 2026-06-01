@@ -5,6 +5,7 @@ const NAV = [
   { panel: 'dashboard',   icon: 'ti-layout-dashboard', label: 'Dashboard' },
   { section: 'Planung' },
   { panel: 'demand',      icon: 'ti-inbox',             label: 'Demand' },
+  { panel: 'businesscases', icon: 'ti-calculator',     label: 'Business Cases' },
   { panel: 'portfolio',   icon: 'ti-briefcase',         label: 'Portfolio' },
   { panel: 'roadmap',     icon: 'ti-road',              label: 'Roadmap' },
   { section: 'Ressourcen' },

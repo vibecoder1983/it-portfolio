@@ -23,6 +23,7 @@ export const BADGE_CLASS = {
   'In Bewertung': 'b-amber',
   Freigegeben: 'b-green',
   Abgelehnt: 'b-red',
+  'Im Portfolio': 'b-teal',
   Offen: 'b-gray',
   'In Arbeit': 'b-blue',
   Erreicht: 'b-green',

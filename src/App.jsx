@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import Layout from './components/Layout'
 import Dashboard from './components/Dashboard'
-import Demand from './components/Demand'
+import Demand, { BusinessCases } from './components/Demand'
 import Portfolio from './components/Portfolio'
 import { Roadmap, Capacity, Resources, Mitarbeiter } from './components/Panels'
 import { showToast } from './components/UI'
@@ -10,7 +10,7 @@ import { PROJ_COLORS } from './lib/constants'
 import * as XLSX from 'xlsx'
 
 const PAGE_TITLES = {
-  dashboard: 'Dashboard', demand: 'Demand-Backlog', portfolio: 'IT-Portfolio',
+  dashboard: 'Dashboard', demand: 'Demand-Backlog', businesscases: 'Business Cases', portfolio: 'IT-Portfolio',
   roadmap: 'Roadmap', capacity: 'Kapazitätsplanung', resources: 'Ressourcenzuweisung', mitarbeiter: 'Mitarbeiter',
 }
 
@@ -52,17 +52,22 @@ export default function App() {
     const color = PROJ_COLORS[projects.length % PROJ_COLORS.length]
     const payload = {
       title: d.title, cat: 'Sonstiges', phase: 'Preparation',
-      start_date: d.start_date || null, end_date: null,
+      start_date: d.start_date || null, end_date: d.go_live_date || null,
       budget: d.budget || 0, progress: 0,
       pm_it: '', pm_biz: d.req || '',
       color, milestones: [],
+      // Business Case Daten übertragen
+      business_case: d.business_case || null,
+      roi: d.roi || null,
+      payback_period: d.payback_period || null,
     }
     const res = await sb.from('projects').insert(payload).select().single()
     if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
-    const { error: delErr } = await sb.from('demands').delete().eq('id', demandId)
-    if (delErr) { showToast('Fehler beim Löschen des Demands', true); return }
+    // Demand als "Im Portfolio" markieren statt löschen — BC-Referenz bleibt erhalten
+    const { error: updErr } = await sb.from('demands').update({ status: 'Im Portfolio', promoted_project_id: res.data.id }).eq('id', demandId)
+    if (updErr) { showToast('Fehler beim Aktualisieren des Demands', true); return }
     setProjects(prev => [...prev, { ...res.data, milestones: [] }])
-    setDemands(prev => prev.filter(x => x.id !== demandId))
+    setDemands(prev => prev.map(x => x.id === demandId ? { ...x, status: 'Im Portfolio', promoted_project_id: res.data.id } : x))
     showToast('Demand ins Portfolio übernommen')
   }
 
@@ -146,6 +151,7 @@ export default function App() {
     >
       {panel === 'dashboard'   && <Dashboard demands={demands} projects={projects} />}
       {panel === 'demand'      && <Demand demands={demands} setDemands={setDemands} onPromote={promoteToPortfolio} />}
+      {panel === 'businesscases' && <BusinessCases demands={demands} setDemands={setDemands} />}
       {panel === 'portfolio'   && <Portfolio projects={projects} setProjects={setProjects} mitarbeiter={mitarbeiter} assignments={assignments} setAssignments={setAssignments} onDemote={demoteToBacklog} />}
       {panel === 'roadmap'     && <Roadmap projects={projects} />}
       {panel === 'capacity'    && <Capacity mitarbeiter={mitarbeiter} assignments={assignments} />}

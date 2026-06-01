@@ -253,7 +253,7 @@ export default function Demand({ demands, setDemands, onPromote }) {
   const fileRef = useRef()
   const [bcDemand, setBcDemand] = useState(null)
 
-  const list = filter ? demands.filter(d => d.status === filter) : demands
+  const list = demands.filter(d => d.status !== 'Im Portfolio' && (filter ? d.status === filter : true))
 
   async function setStatus(id, status) {
     const d = demands.find(x => x.id === id); if (!d) return
@@ -453,6 +453,108 @@ export default function Demand({ demands, setDemands, onPromote }) {
         onClose={() => setBcDemand(null)}
         demand={bcDemand}
         onSave={updated => setDemands(prev => prev.map(d => d.id === updated.id ? updated : d))}
+      />
+    </>
+  )
+}
+
+/* ── Business Cases Übersicht ── */
+export function BusinessCases({ demands, setDemands }) {
+  const [bcDemand, setBcDemand] = useState(null)
+  const withBC    = demands.filter(d => d.business_case)
+  const withoutBC = demands.filter(d => !d.business_case && d.status !== 'Im Portfolio')
+  const promoted  = demands.filter(d => d.status === 'Im Portfolio')
+
+  const fmtEur = v => v != null ? Math.round(v).toLocaleString('de-DE') + ' €' : '—'
+  const roiColor = v => v == null ? 'var(--text-tertiary)' : v >= 0 ? '#1D9E75' : '#E24B4A'
+
+  function BCRow({ d }) {
+    const bc = d.business_case
+    const totalCost   = bc ? (bc.oneOffCosts||[]).reduce((s,r)=>s+num(r.amounts?.[0]||0),0)
+      + (bc.recurringCosts||[]).reduce((s,r)=>(r.amounts||[]).reduce((ss,a)=>ss+num(a),s),0) : 0
+    const totalBenefit = bc ? (bc.benefits||[]).reduce((s,r)=>(r.amounts||[]).reduce((ss,a)=>ss+num(a),s),0) : 0
+
+    return (
+      <tr style={{ borderBottom:'0.5px solid var(--border-light)', cursor:'pointer' }} onClick={() => setBcDemand(d)}
+        onMouseEnter={e=>e.currentTarget.style.background='var(--bg-secondary)'}
+        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+        <td style={{ padding:'10px 12px', fontWeight:500 }}>
+          {d.title}
+          <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>{d.req||'—'}</div>
+        </td>
+        <td style={{ padding:'10px 12px' }}><Badge label={d.prio} /></td>
+        <td style={{ padding:'10px 12px', fontSize:12 }}>{bc?.years ? `${bc.years} Jahre` : '—'}</td>
+        <td style={{ padding:'10px 12px', fontSize:12, color:'#E24B4A', fontWeight:500 }}>{fmtEur(totalCost)}</td>
+        <td style={{ padding:'10px 12px', fontSize:12, color:'#1D9E75', fontWeight:500 }}>{fmtEur(totalBenefit)}</td>
+        <td style={{ padding:'10px 12px', fontSize:14, fontWeight:700, color: roiColor(d.roi) }}>
+          {d.roi != null ? `${d.roi.toFixed(1)} %` : '—'}
+        </td>
+        <td style={{ padding:'10px 12px', fontSize:12 }}>
+          {d.payback_period ? (
+            <span style={{ display:'inline-flex',alignItems:'center',gap:4,color:'#185FA5',fontWeight:500 }}>
+              <i className="ti ti-clock" style={{ fontSize:12 }} /> {d.payback_period} {d.payback_period===1?'Jahr':'Jahre'}
+            </span>
+          ) : '—'}
+        </td>
+        <td style={{ padding:'10px 12px' }}>
+          {d.status === 'Im Portfolio'
+            ? <span style={{ display:'inline-flex',alignItems:'center',gap:4,fontSize:11,fontWeight:500,color:'#1D9E75',background:'#EAF3DE',padding:'2px 8px',borderRadius:4 }}><i className="ti ti-briefcase" style={{fontSize:11}}/> Im Portfolio</span>
+            : <Badge label={d.status} />
+          }
+        </td>
+        <td style={{ padding:'10px 12px' }}>
+          <Btn size="sm" onClick={e=>{e.stopPropagation();setBcDemand(d)}}><i className="ti ti-edit"/></Btn>
+        </td>
+      </tr>
+    )
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader title={<><i className="ti ti-calculator" style={{marginRight:6}}/> Business Cases — Übersicht</>}>
+          <span style={{fontSize:12,color:'var(--text-tertiary)'}}>{withBC.length} von {demands.length} Vorhaben erfasst</span>
+        </CardHeader>
+
+        {withBC.length > 0 ? (
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead>
+                <tr>
+                  {['Vorhaben','Priorität','Horizont','Gesamtkosten','Gesamtnutzen','ROI','Payback','Status',''].map(h=>(
+                    <th key={h} style={{textAlign:'left',padding:'8px 12px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase',letterSpacing:'.05em',whiteSpace:'nowrap'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {withBC.map(d => <BCRow key={d.id} d={d} />)}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{fontSize:13,color:'var(--text-tertiary)',padding:'12px 0'}}>Noch keine Business Cases erfasst.</div>
+        )}
+      </Card>
+
+      {withoutBC.length > 0 && (
+        <Card style={{marginTop:'1rem'}}>
+          <CardHeader title="Vorhaben ohne Business Case" />
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,padding:'4px 0'}}>
+            {withoutBC.map(d => (
+              <div key={d.id} style={{display:'inline-flex',alignItems:'center',gap:6,background:'var(--bg-secondary)',border:'0.5px solid var(--border-light)',borderRadius:'var(--radius-lg)',padding:'6px 12px',fontSize:12,cursor:'pointer'}}
+                onClick={()=>setBcDemand(d)}>
+                <span style={{fontWeight:500}}>{d.title}</span>
+                <Badge label={d.prio}/>
+                <span style={{color:'#185FA5',fontSize:11}}><i className="ti ti-plus"/> erfassen</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <BusinessCaseModal
+        open={!!bcDemand} onClose={()=>setBcDemand(null)} demand={bcDemand}
+        onSave={updated=>setDemands(prev=>prev.map(d=>d.id===updated.id?updated:d))}
       />
     </>
   )
