@@ -79,6 +79,10 @@ export default function App() {
       effort: 0, budget: p.budget || 0,
       start_date: p.start_date || null, description: '',
       status: 'In Bewertung',
+      // Business Case Daten zurückübertragen
+      business_case: p.business_case || null,
+      roi: p.roi || null,
+      payback_period: p.payback_period || null,
     }
     const res = await sb.from('demands').insert(payload).select().single()
     if (res.error) { showToast('Fehler: ' + res.error.message, true); return }
