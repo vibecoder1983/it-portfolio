@@ -1,7 +1,221 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
 import { Badge, Btn, Card, CardHeader, Modal, ModalActions, FormRow, FormGrid, showToast } from './UI'
 import { D_STATUSES, BADGE_CLASS, fmt } from '../lib/constants'
 import { sb } from '../lib/supabase'
+
+/* ── Business Case Modal ── */
+function makeRows(n) { return [{ label: '', amounts: Array(n).fill('') }] }
+const EMPTY_BC = (y=3) => ({ years: y, oneOffCosts: makeRows(1), recurringCosts: makeRows(y), benefits: makeRows(y) })
+
+function num(v) { return parseFloat(String(v).replace(/\./g,'').replace(',','.')) || 0 }
+function fmtInput(v) { return v === '' ? '' : v }
+
+// CSS trick: hide number spinners via inline style on the input
+const amtStyle = {
+  width: '100%', padding: '6px 10px', border: '0.5px solid var(--border-mid)',
+  borderRadius: 'var(--radius-md)', fontSize: 13, fontFamily: 'var(--font)',
+  background: 'var(--bg-primary)', MozAppearance: 'textfield', textAlign: 'right',
+}
+
+function BusinessCaseModal({ open, onClose, demand, onSave }) {
+  const [bc, setBc] = useState(() => demand?.business_case || EMPTY_BC())
+  const [saving, setSaving] = useState(false)
+
+  React.useEffect(() => {
+    if (demand) setBc(demand.business_case || EMPTY_BC())
+  }, [demand?.id])
+
+  const years = bc.years
+
+  function setYears(y) {
+    setBc(p => ({
+      ...p, years: y,
+      oneOffCosts:    p.oneOffCosts.map(r => ({ ...r, amounts: Array(1).fill(r.amounts?.[0]||'') })),
+      recurringCosts: p.recurringCosts.map(r => ({ ...r, amounts: Array(y).fill('').map((_,i) => r.amounts?.[i]||'') })),
+      benefits:       p.benefits.map(r => ({ ...r, amounts: Array(y).fill('').map((_,i) => r.amounts?.[i]||'') })),
+    }))
+  }
+
+  function addRow(key) {
+    const len = key === 'oneOffCosts' ? 1 : years
+    setBc(p => ({ ...p, [key]: [...p[key], { label:'', amounts: Array(len).fill('') }] }))
+  }
+  function removeRow(key, i) { setBc(p => ({ ...p, [key]: p[key].filter((_,j)=>j!==i) })) }
+  function updateLabel(key, i, val) { setBc(p => ({ ...p, [key]: p[key].map((r,j)=>j===i?{...r,label:val}:r) })) }
+  function updateAmount(key, i, yi, val) {
+    setBc(p => ({ ...p, [key]: p[key].map((r,j)=>j===i?{...r,amounts:r.amounts.map((a,k)=>k===yi?val:a)}:r) }))
+  }
+
+  const calc = useMemo(() => {
+    const oneOffTotal = bc.oneOffCosts.reduce((s,r)=>s+num(r.amounts?.[0]),0)
+    const costsPerYear = Array.from({length:years},(_,yi)=>
+      bc.recurringCosts.reduce((s,r)=>s+num(r.amounts?.[yi]),0))
+    const benefitsPerYear = Array.from({length:years},(_,yi)=>
+      bc.benefits.reduce((s,r)=>s+num(r.amounts?.[yi]),0))
+
+    let payback=null, cumulative=-oneOffTotal
+    const cashflows=[]
+    let totalCost=oneOffTotal, totalBenefit=0
+    for(let y=0;y<years;y++){
+      const net=benefitsPerYear[y]-costsPerYear[y]
+      cumulative+=net
+      totalCost+=costsPerYear[y]
+      totalBenefit+=benefitsPerYear[y]
+      cashflows.push({year:y+1,benefit:benefitsPerYear[y],cost:costsPerYear[y],net,cumulative})
+      if(payback===null&&cumulative>=0) payback=y+1
+    }
+    const roi=totalCost>0?(totalBenefit-totalCost)/totalCost*100:0
+    return {oneOffTotal,totalCost,totalBenefit,roi,payback,cashflows}
+  }, [bc])
+
+  async function save() {
+    if (!demand) return
+    setSaving(true)
+    const { error } = await sb.from('demands').update({
+      business_case: bc,
+      roi: Math.round(calc.roi*10)/10,
+      payback_period: calc.payback
+    }).eq('id', demand.id)
+    setSaving(false)
+    if (error) { showToast('Fehler: '+error.message, true); return }
+    onSave({ ...demand, business_case: bc, roi: Math.round(calc.roi*10)/10, payback_period: calc.payback })
+    showToast('Business Case gespeichert'); onClose()
+  }
+
+  const fmtEur = v => Math.round(v).toLocaleString('de-DE')+' €'
+  const SH = ({icon,title}) => (
+    <div style={{fontSize:11,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',margin:'1.2rem 0 .6rem',display:'flex',alignItems:'center',gap:6}}>
+      <i className={`ti ${icon}`} style={{fontSize:13}}/>{title}
+    </div>
+  )
+
+  function InputTable({ rowKey, colCount, colLabels }) {
+    return (
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:'left',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:140}}>Bezeichnung</th>
+              {colLabels.map((l,i)=>(
+                <th key={i} style={{textAlign:'right',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:110}}>{l}</th>
+              ))}
+              <th style={{width:32}}/>
+            </tr>
+          </thead>
+          <tbody>
+            {bc[rowKey].map((r,ri)=>(
+              <tr key={ri}>
+                <td style={{padding:'3px 4px 3px 0'}}>
+                  <input value={r.label} onChange={e=>updateLabel(rowKey,ri,e.target.value)} placeholder="Bezeichnung eingeben"
+                    style={{width:'100%',padding:'6px 10px',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',fontSize:13,fontFamily:'var(--font)',background:'var(--bg-primary)'}} />
+                </td>
+                {(r.amounts||[]).map((a,yi)=>(
+                  <td key={yi} style={{padding:'3px 4px'}}>
+                    <input value={a} onChange={e=>updateAmount(rowKey,ri,yi,e.target.value)}
+                      placeholder="0"
+                      style={{...amtStyle, WebkitAppearance:'none'}}
+                      onFocus={e=>e.target.select()} />
+                  </td>
+                ))}
+                <td style={{padding:'3px 0 3px 4px'}}>
+                  <Btn size="sm" variant="danger" onClick={()=>removeRow(rowKey,ri)} disabled={bc[rowKey].length===1}><i className="ti ti-trash"/></Btn>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <Btn size="sm" onClick={()=>addRow(rowKey)} style={{marginTop:6}}><i className="ti ti-plus"/> Zeile hinzufügen</Btn>
+      </div>
+    )
+  }
+
+  const yearCols = Array.from({length:years},(_,i)=>`Jahr ${i+1}`)
+
+  return (
+    <Modal open={open} onClose={onClose} title={<><i className="ti ti-calculator"/> Business Case — {demand?.title}</>} wide>
+
+      {/* Horizont */}
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'1rem',flexWrap:'wrap'}}>
+        <span style={{fontSize:13,fontWeight:500}}>Betrachtungszeitraum:</span>
+        {[1,2,3,4,5].map(y=>(
+          <button key={y} onClick={()=>setYears(y)}
+            style={{padding:'5px 14px',borderRadius:'var(--radius-md)',border:'0.5px solid var(--border-mid)',cursor:'pointer',fontFamily:'var(--font)',fontSize:12,
+              background:bc.years===y?'#185FA5':'var(--bg-primary)',color:bc.years===y?'#fff':'var(--text-secondary)'}}>
+            {y} {y===1?'Jahr':'Jahre'}
+          </button>
+        ))}
+      </div>
+
+      {/* Einmalige Kosten */}
+      <SH icon="ti-coin" title="Einmalige Kosten (One-off)" />
+      <InputTable rowKey="oneOffCosts" colCount={1} colLabels={['Betrag (€)']} />
+
+      {/* Laufende Kosten */}
+      <SH icon="ti-refresh" title="Laufende Kosten / Jahr (€)" />
+      <InputTable rowKey="recurringCosts" colCount={years} colLabels={yearCols} />
+
+      {/* Benefits */}
+      <SH icon="ti-trending-up" title="Benefits / Jahr (€)" />
+      <InputTable rowKey="benefits" colCount={years} colLabels={yearCols} />
+
+      {/* Ergebnis */}
+      <SH icon="ti-chart-bar" title="Ergebnis" />
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:'1rem'}}>
+        {[
+          {label:'ROI',          value:`${calc.roi.toFixed(1)} %`,           color:calc.roi>=0?'#1D9E75':'#E24B4A'},
+          {label:'Payback Period',value:calc.payback?`${calc.payback} ${calc.payback===1?'Jahr':'Jahre'}`:`> ${years} J.`, color:calc.payback?'#185FA5':'#EF9F27'},
+          {label:'Gesamtkosten', value:fmtEur(calc.totalCost),               color:'#E24B4A'},
+          {label:'Gesamtnutzen', value:fmtEur(calc.totalBenefit),            color:'#1D9E75'},
+        ].map(k=>(
+          <div key={k.label} style={{background:'var(--bg-secondary)',borderRadius:'var(--radius-lg)',padding:'10px 12px'}}>
+            <div style={{fontSize:10,fontWeight:500,color:'var(--text-tertiary)',textTransform:'uppercase',marginBottom:3}}>{k.label}</div>
+            <div style={{fontSize:17,fontWeight:700,color:k.color}}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Cashflow Tabelle */}
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr style={{borderBottom:'0.5px solid var(--border-light)'}}>
+              {['Jahr','Benefits','Kosten','Netto','Kumulativ',''].map(h=>(
+                <th key={h} style={{textAlign:'left',padding:'5px 8px',fontSize:10,fontWeight:500,color:'var(--text-tertiary)',textTransform:'uppercase'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{borderBottom:'0.5px solid var(--border-light)'}}>
+              <td style={{padding:'5px 8px',fontWeight:500}}>Jahr 0</td>
+              <td style={{padding:'5px 8px'}}>—</td>
+              <td style={{padding:'5px 8px',color:'#E24B4A'}}>−{fmtEur(calc.oneOffTotal)}</td>
+              <td style={{padding:'5px 8px',color:'#E24B4A'}}>−{fmtEur(calc.oneOffTotal)}</td>
+              <td style={{padding:'5px 8px',fontWeight:600,color:'#E24B4A'}}>−{fmtEur(calc.oneOffTotal)}</td>
+              <td/>
+            </tr>
+            {calc.cashflows.map(({year,benefit,cost,net,cumulative})=>(
+              <tr key={year} style={{borderBottom:'0.5px solid var(--border-light)',background:cumulative>=0?'#F6FBF0':'transparent'}}>
+                <td style={{padding:'5px 8px',fontWeight:500}}>Jahr {year}</td>
+                <td style={{padding:'5px 8px',color:'#1D9E75'}}>{fmtEur(benefit)}</td>
+                <td style={{padding:'5px 8px',color:'#E24B4A'}}>−{fmtEur(cost)}</td>
+                <td style={{padding:'5px 8px',color:net>=0?'#1D9E75':'#E24B4A'}}>{net>=0?'+':''}{fmtEur(net)}</td>
+                <td style={{padding:'5px 8px',fontWeight:600,color:cumulative>=0?'#1D9E75':'#E24B4A'}}>{cumulative>=0?'+':''}{fmtEur(cumulative)}</td>
+                <td style={{padding:'5px 8px',fontSize:10,color:'#1D9E75'}}>{cumulative>=0&&year===calc.payback?'✓ Break-even':''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <ModalActions>
+        <Btn onClick={onClose}>Abbrechen</Btn>
+        <Btn variant="primary" disabled={saving} onClick={save}>
+          {saving?'Speichert...':<><i className="ti ti-check"/> Speichern</>}
+        </Btn>
+      </ModalActions>
+    </Modal>
+  )
+}
 
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -20,6 +234,7 @@ export default function Demand({ demands, setDemands, onPromote }) {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef()
+  const [bcDemand, setBcDemand] = useState(null)
 
   const list = filter ? demands.filter(d => d.status === filter) : demands
 
@@ -108,7 +323,7 @@ export default function Demand({ demands, setDemands, onPromote }) {
           <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:860 }}>
             <thead>
               <tr>
-                {['Vorhaben','Antragsteller','Priorität','Budget (€)','Aufwand','Status','',''].map(h => (
+                {['Vorhaben','Antragsteller','Priorität','Budget (€)','Aufwand','Status','','',''].map(h => (
                   <th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase',letterSpacing:'.05em' }}>{h}</th>
                 ))}
               </tr>
@@ -137,6 +352,13 @@ export default function Demand({ demands, setDemands, onPromote }) {
                   </td>
                   <td style={{ padding:'8px 10px' }}>
                     <Btn size="sm" onClick={() => openEdit(d)}><i className="ti ti-edit" /></Btn>
+                  </td>
+                  <td style={{ padding:'8px 10px' }}>
+                    <Btn size="sm" title="Business Case erfassen" onClick={() => setBcDemand(d)}
+                      style={{ display:'inline-flex',alignItems:'center',gap:4,position:'relative' }}>
+                      <i className="ti ti-calculator" /> Business Case
+                      {d.business_case && <span style={{ width:7,height:7,borderRadius:'50%',background:'#1D9E75',position:'absolute',top:2,right:2 }} />}
+                    </Btn>
                   </td>
                   <td style={{ padding:'8px 10px' }}>
                     <Btn size="sm" variant="primary" title="Ins Portfolio übernehmen" onClick={() => onPromote(d.id)}>
@@ -208,6 +430,13 @@ export default function Demand({ demands, setDemands, onPromote }) {
           </Btn>
         </ModalActions>
       </Modal>
+
+      <BusinessCaseModal
+        open={!!bcDemand}
+        onClose={() => setBcDemand(null)}
+        demand={bcDemand}
+        onSave={updated => setDemands(prev => prev.map(d => d.id === updated.id ? updated : d))}
+      />
     </>
   )
 }

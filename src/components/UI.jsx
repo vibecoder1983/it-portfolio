@@ -34,7 +34,7 @@ export function Modal({ id, title, open, onClose, children, wide }) {
   if (!open) return null
   return (
     <div className={styles.modalOverlay} onClick={e => { if (e.target === ref.current) onClose() }} ref={ref}>
-      <div className={styles.modal} style={wide ? { width: 640 } : {}}>
+      <div className={styles.modal} style={wide ? { width: 780, maxWidth: '95vw' } : {}}>
         <h3>{title}</h3>
         {children}
       </div>
