@@ -8,13 +8,64 @@ function makeRows(n) { return [{ label: '', amounts: Array(n).fill('') }] }
 const EMPTY_BC = (y=3) => ({ years: y, oneOffCosts: makeRows(1), recurringCosts: makeRows(y), benefits: makeRows(y) })
 
 function num(v) { return parseFloat(String(v).replace(/\./g,'').replace(',','.')) || 0 }
-function fmtInput(v) { return v === '' ? '' : v }
 
-// CSS trick: hide number spinners via inline style on the input
 const amtStyle = {
   width: '100%', padding: '6px 10px', border: '0.5px solid var(--border-mid)',
   borderRadius: 'var(--radius-md)', fontSize: 13, fontFamily: 'var(--font)',
-  background: 'var(--bg-primary)', MozAppearance: 'textfield', textAlign: 'right',
+  background: 'var(--bg-primary)', textAlign: 'right', appearance: 'none',
+  MozAppearance: 'textfield', WebkitAppearance: 'none',
+}
+
+const lblStyle = {
+  width: '100%', padding: '6px 10px', border: '0.5px solid var(--border-mid)',
+  borderRadius: 'var(--radius-md)', fontSize: 13, fontFamily: 'var(--font)',
+  background: 'var(--bg-primary)',
+}
+
+function BcSH({ icon, title }) {
+  return (
+    <div style={{fontSize:11,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',margin:'1.2rem 0 .6rem',display:'flex',alignItems:'center',gap:6}}>
+      <i className={`ti ${icon}`} style={{fontSize:13}}/>{title}
+    </div>
+  )
+}
+
+function BcInputTable({ rows, rowKey, colLabels, onUpdateLabel, onUpdateAmount, onAddRow, onRemoveRow }) {
+  return (
+    <div style={{overflowX:'auto'}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+        <thead>
+          <tr>
+            <th style={{textAlign:'left',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:140}}>Bezeichnung</th>
+            {colLabels.map((l,i)=>(
+              <th key={i} style={{textAlign:'right',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:110}}>{l}</th>
+            ))}
+            <th style={{width:32}}/>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r,ri)=>(
+            <tr key={ri}>
+              <td style={{padding:'3px 4px 3px 0'}}>
+                <input value={r.label} onChange={e=>onUpdateLabel(ri,e.target.value)}
+                  placeholder="Bezeichnung eingeben" style={lblStyle} />
+              </td>
+              {(r.amounts||[]).map((a,yi)=>(
+                <td key={yi} style={{padding:'3px 4px'}}>
+                  <input value={a} onChange={e=>onUpdateAmount(ri,yi,e.target.value)}
+                    placeholder="0" style={amtStyle} onFocus={e=>e.target.select()} />
+                </td>
+              ))}
+              <td style={{padding:'3px 0 3px 4px'}}>
+                <Btn size="sm" variant="danger" onClick={()=>onRemoveRow(ri)} disabled={rows.length===1}><i className="ti ti-trash"/></Btn>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <Btn size="sm" onClick={onAddRow} style={{marginTop:6}}><i className="ti ti-plus"/> Zeile hinzufügen</Btn>
+    </div>
+  )
 }
 
 function BusinessCaseModal({ open, onClose, demand, onSave }) {
@@ -83,52 +134,6 @@ function BusinessCaseModal({ open, onClose, demand, onSave }) {
   }
 
   const fmtEur = v => Math.round(v).toLocaleString('de-DE')+' €'
-  const SH = ({icon,title}) => (
-    <div style={{fontSize:11,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'.06em',margin:'1.2rem 0 .6rem',display:'flex',alignItems:'center',gap:6}}>
-      <i className={`ti ${icon}`} style={{fontSize:13}}/>{title}
-    </div>
-  )
-
-  function InputTable({ rowKey, colCount, colLabels }) {
-    return (
-      <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-          <thead>
-            <tr>
-              <th style={{textAlign:'left',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:140}}>Bezeichnung</th>
-              {colLabels.map((l,i)=>(
-                <th key={i} style={{textAlign:'right',padding:'4px 6px',fontSize:11,color:'var(--text-tertiary)',fontWeight:500,minWidth:110}}>{l}</th>
-              ))}
-              <th style={{width:32}}/>
-            </tr>
-          </thead>
-          <tbody>
-            {bc[rowKey].map((r,ri)=>(
-              <tr key={ri}>
-                <td style={{padding:'3px 4px 3px 0'}}>
-                  <input value={r.label} onChange={e=>updateLabel(rowKey,ri,e.target.value)} placeholder="Bezeichnung eingeben"
-                    style={{width:'100%',padding:'6px 10px',border:'0.5px solid var(--border-mid)',borderRadius:'var(--radius-md)',fontSize:13,fontFamily:'var(--font)',background:'var(--bg-primary)'}} />
-                </td>
-                {(r.amounts||[]).map((a,yi)=>(
-                  <td key={yi} style={{padding:'3px 4px'}}>
-                    <input value={a} onChange={e=>updateAmount(rowKey,ri,yi,e.target.value)}
-                      placeholder="0"
-                      style={{...amtStyle, WebkitAppearance:'none'}}
-                      onFocus={e=>e.target.select()} />
-                  </td>
-                ))}
-                <td style={{padding:'3px 0 3px 4px'}}>
-                  <Btn size="sm" variant="danger" onClick={()=>removeRow(rowKey,ri)} disabled={bc[rowKey].length===1}><i className="ti ti-trash"/></Btn>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <Btn size="sm" onClick={()=>addRow(rowKey)} style={{marginTop:6}}><i className="ti ti-plus"/> Zeile hinzufügen</Btn>
-      </div>
-    )
-  }
-
   const yearCols = Array.from({length:years},(_,i)=>`Jahr ${i+1}`)
 
   return (
@@ -147,19 +152,31 @@ function BusinessCaseModal({ open, onClose, demand, onSave }) {
       </div>
 
       {/* Einmalige Kosten */}
-      <SH icon="ti-coin" title="Einmalige Kosten (One-off)" />
-      <InputTable rowKey="oneOffCosts" colCount={1} colLabels={['Betrag (€)']} />
+      <BcSH icon="ti-coin" title="Einmalige Kosten (One-off)" />
+      <BcInputTable rows={bc.oneOffCosts} rowKey="oneOffCosts" colLabels={['Betrag (€)']}
+        onUpdateLabel={(ri,v)=>updateLabel('oneOffCosts',ri,v)}
+        onUpdateAmount={(ri,yi,v)=>updateAmount('oneOffCosts',ri,yi,v)}
+        onAddRow={()=>addRow('oneOffCosts')}
+        onRemoveRow={ri=>removeRow('oneOffCosts',ri)} />
 
       {/* Laufende Kosten */}
-      <SH icon="ti-refresh" title="Laufende Kosten / Jahr (€)" />
-      <InputTable rowKey="recurringCosts" colCount={years} colLabels={yearCols} />
+      <BcSH icon="ti-refresh" title="Laufende Kosten / Jahr (€)" />
+      <BcInputTable rows={bc.recurringCosts} rowKey="recurringCosts" colLabels={yearCols}
+        onUpdateLabel={(ri,v)=>updateLabel('recurringCosts',ri,v)}
+        onUpdateAmount={(ri,yi,v)=>updateAmount('recurringCosts',ri,yi,v)}
+        onAddRow={()=>addRow('recurringCosts')}
+        onRemoveRow={ri=>removeRow('recurringCosts',ri)} />
 
       {/* Benefits */}
-      <SH icon="ti-trending-up" title="Benefits / Jahr (€)" />
-      <InputTable rowKey="benefits" colCount={years} colLabels={yearCols} />
+      <BcSH icon="ti-trending-up" title="Benefits / Jahr (€)" />
+      <BcInputTable rows={bc.benefits} rowKey="benefits" colLabels={yearCols}
+        onUpdateLabel={(ri,v)=>updateLabel('benefits',ri,v)}
+        onUpdateAmount={(ri,yi,v)=>updateAmount('benefits',ri,yi,v)}
+        onAddRow={()=>addRow('benefits')}
+        onRemoveRow={ri=>removeRow('benefits',ri)} />
 
       {/* Ergebnis */}
-      <SH icon="ti-chart-bar" title="Ergebnis" />
+      <BcSH icon="ti-chart-bar" title="Ergebnis" />
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:'1rem'}}>
         {[
           {label:'ROI',          value:`${calc.roi.toFixed(1)} %`,           color:calc.roi>=0?'#1D9E75':'#E24B4A'},
