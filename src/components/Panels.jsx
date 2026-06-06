@@ -225,7 +225,7 @@ export function Capacity({ mitarbeiter, assignments }) {
               </button>
             ))}
           </div>
-          {[['#EAF3DE','≤80%'],['#FAEEDA','80–100%'],['#FCEBEB','>100%']].map(([bg,lbl]) => (
+          {[['#EAF3DE','≤80%'],['#FAEEDA','80–100%'],['#E24B4A','>100%']].map(([bg,lbl]) => (
             <span key={lbl} style={{ fontSize:11,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:4 }}>
               <span style={{ display:'inline-block',width:9,height:9,borderRadius:2,background:bg }} />{lbl}
             </span>
@@ -255,7 +255,7 @@ export function Capacity({ mitarbeiter, assignments }) {
                   const total   = hoursInPeriod(ma, c.start, c.end)
                   const maxH    = maxHoursInPeriod(ma, c.start, c.end)
                   let bg = '#EAF3DE', color = '#27500A'
-                  if (total > maxH)        { bg = '#FCEBEB'; color = '#791F1F' }
+                  if (total > maxH)        { bg = '#E24B4A'; color = '#fff' }
                   else if (total > maxH*.8){ bg = '#FAEEDA'; color = '#633806' }
                   return (
                     <div key={i} style={{ flex:1,minWidth:zoom==='week'?20:0 }}>
