@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { Badge, Btn, Card, CardHeader, Modal, ModalActions, FormRow, FormGrid, showToast } from './UI'
 import { PHASES, MONTHS_SHORT, fmt } from '../lib/constants'
 import { sb } from '../lib/supabase'
@@ -373,8 +374,12 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
 
 /* ══════════════════ MITARBEITER ══════════════════ */
 export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects }) {
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ name:'', role:'Solution Architect', team:'Backend', max_h:40 })
+  const [modal, setModal]       = useState(false)
+  const [importModal, setImportModal] = useState(false)
+  const [form, setForm]         = useState({ name:'', role:'Solution Architect', team:'Backend', max_h:40 })
+  const [preview, setPreview]   = useState([])   // rows to import
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef()
 
   async function save() {
     if (!form.name.trim()) return
@@ -387,10 +392,82 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
 
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // ── Import ──
+  function handleFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const ext = file.name.split('.').pop().toLowerCase()
+    const reader = new FileReader()
+
+    reader.onload = evt => {
+      let rows = []
+      if (ext === 'csv') {
+        const text = evt.target.result
+        const lines = text.split(/\r?\n/).filter(l => l.trim())
+        const header = lines[0].split(/[;,\t]/).map(h => h.trim().toLowerCase())
+        rows = lines.slice(1).map(line => {
+          const cols = line.split(/[;,\t]/)
+          return {
+            name:  cols[header.indexOf('name')]?.trim() || cols[0]?.trim() || '',
+            role:  cols[header.indexOf('rolle')] || cols[header.indexOf('role')] || cols[1]?.trim() || 'Solution Architect',
+            team:  cols[header.indexOf('team')]?.trim() || cols[2]?.trim() || 'Backend',
+            max_h: parseInt(cols[header.indexOf('max h/woche')] || cols[header.indexOf('max_h')] || cols[3]) || 40,
+          }
+        }).filter(r => r.name)
+      } else {
+        const wb = XLSX.read(evt.target.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const data = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        rows = data.map(r => {
+          const keys = Object.keys(r).map(k => k.toLowerCase())
+          const get = (...names) => {
+            for (const n of names) {
+              const k = Object.keys(r).find(k => k.toLowerCase().includes(n))
+              if (k && r[k]) return String(r[k]).trim()
+            }
+            return ''
+          }
+          return {
+            name:  get('name'),
+            role:  get('rolle', 'role') || 'Solution Architect',
+            team:  get('team') || 'Backend',
+            max_h: parseInt(get('max', 'stunden', 'h/woche', 'max_h')) || 40,
+          }
+        }).filter(r => r.name)
+      }
+      setPreview(rows)
+      setImportModal(true)
+    }
+    ext === 'csv' ? reader.readAsText(file, 'UTF-8') : reader.readAsArrayBuffer(file)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function updatePreviewRow(i, k, v) {
+    setPreview(prev => prev.map((r, j) => j === i ? { ...r, [k]: v } : r))
+  }
+  function removePreviewRow(i) { setPreview(prev => prev.filter((_, j) => j !== i)) }
+
+  async function confirmImport() {
+    if (!preview.length) return
+    setImporting(true)
+    const payload = preview.map(r => ({ ...r, max_h: parseInt(r.max_h) || 40 }))
+    const { data, error } = await sb.from('mitarbeiter').insert(payload).select()
+    setImporting(false)
+    if (error) { showToast('Import-Fehler: ' + error.message, true); return }
+    setMitarbeiter(prev => [...prev, ...data])
+    showToast(`${data.length} Mitarbeiter importiert`)
+    setImportModal(false); setPreview([])
+  }
+
+  const ROLES = ['Solution Architect','Senior Developer','Developer','Projektleiter','Business Analyst','DevOps Engineer','Scrum Master']
+  const TEAMS = ['Backend','Frontend','Infrastruktur','Data & Analytics','PMO']
+
   return (
     <>
+      <input ref={fileRef} type="file" accept=".csv,.xlsx" style={{ display:'none' }} onChange={handleFile} />
       <Card>
         <CardHeader title="Mitarbeiter">
+          <Btn onClick={() => fileRef.current?.click()}><i className="ti ti-upload" /> Import</Btn>
           <Btn variant="primary" onClick={() => setModal(true)}><i className="ti ti-plus" /> Anlegen</Btn>
         </CardHeader>
         <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
@@ -425,17 +502,84 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
         <FormGrid>
           <FormRow label="Rolle">
             <select value={form.role} onChange={e=>f('role',e.target.value)}>
-              {['Solution Architect','Senior Developer','Developer','Projektleiter','Business Analyst','DevOps Engineer','Scrum Master'].map(o=><option key={o}>{o}</option>)}
+              {ROLES.map(o=><option key={o}>{o}</option>)}
             </select>
           </FormRow>
           <FormRow label="Team">
             <select value={form.team} onChange={e=>f('team',e.target.value)}>
-              {['Backend','Frontend','Infrastruktur','Data & Analytics','PMO'].map(o=><option key={o}>{o}</option>)}
+              {TEAMS.map(o=><option key={o}>{o}</option>)}
             </select>
           </FormRow>
         </FormGrid>
         <FormRow label="Max Stunden/Woche"><input type="number" value={form.max_h} onChange={e=>f('max_h',e.target.value)} min="4" max="40" /></FormRow>
         <ModalActions><Btn onClick={()=>setModal(false)}>Abbrechen</Btn><Btn variant="primary" onClick={save}><i className="ti ti-check" /> Anlegen</Btn></ModalActions>
+      </Modal>
+
+      {/* Import-Vorschau Modal */}
+      <Modal open={importModal} onClose={() => { setImportModal(false); setPreview([]) }}
+        title={<><i className="ti ti-upload" /> Import-Vorschau ({preview.length} Mitarbeiter)</>} wide>
+
+        <div style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:'0.75rem' }}>
+          Bitte Daten prüfen und ggf. anpassen. Zeilen mit leerem Namen werden nicht importiert.
+        </div>
+
+        <div style={{ overflowX:'auto', maxHeight:400, overflowY:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead style={{ position:'sticky', top:0, background:'var(--bg-primary)', zIndex:1 }}>
+              <tr>
+                {['Name','Rolle','Team','Max h/Woche',''].map(h => (
+                  <th key={h} style={{ textAlign:'left', padding:'6px 8px', fontSize:11, fontWeight:500, color:'var(--text-tertiary)', borderBottom:'0.5px solid var(--border-light)', textTransform:'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((r, i) => (
+                <tr key={i} style={{ borderBottom:'0.5px solid var(--border-light)' }}>
+                  <td style={{ padding:'4px 6px' }}>
+                    <input value={r.name} onChange={e => updatePreviewRow(i,'name',e.target.value)}
+                      style={{ width:'100%', padding:'4px 8px', border:'0.5px solid var(--border-mid)', borderRadius:'var(--radius-md)', fontSize:12, fontFamily:'var(--font)', background: r.name ? 'var(--bg-primary)' : '#FCEBEB' }} />
+                  </td>
+                  <td style={{ padding:'4px 6px' }}>
+                    <select value={r.role} onChange={e => updatePreviewRow(i,'role',e.target.value)}
+                      style={{ width:'100%', padding:'4px 8px', border:'0.5px solid var(--border-mid)', borderRadius:'var(--radius-md)', fontSize:12, fontFamily:'var(--font)', background:'var(--bg-primary)' }}>
+                      {ROLES.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding:'4px 6px' }}>
+                    <select value={r.team} onChange={e => updatePreviewRow(i,'team',e.target.value)}
+                      style={{ width:'100%', padding:'4px 8px', border:'0.5px solid var(--border-mid)', borderRadius:'var(--radius-md)', fontSize:12, fontFamily:'var(--font)', background:'var(--bg-primary)' }}>
+                      {TEAMS.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding:'4px 6px', width:90 }}>
+                    <input type="number" value={r.max_h} onChange={e => updatePreviewRow(i,'max_h',e.target.value)}
+                      min="1" max="40"
+                      style={{ width:'100%', padding:'4px 8px', border:'0.5px solid var(--border-mid)', borderRadius:'var(--radius-md)', fontSize:12, fontFamily:'var(--font)', background:'var(--bg-primary)', textAlign:'right' }} />
+                  </td>
+                  <td style={{ padding:'4px 6px', width:36 }}>
+                    <Btn size="sm" variant="danger" onClick={() => removePreviewRow(i)}><i className="ti ti-trash" /></Btn>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {preview.length === 0 && (
+          <div style={{ fontSize:13, color:'var(--text-tertiary)', padding:'12px 0', textAlign:'center' }}>Alle Zeilen entfernt.</div>
+        )}
+
+        {/* Hinweis auf Dateiformat */}
+        <div style={{ marginTop:'1rem', padding:'10px 12px', background:'var(--bg-secondary)', borderRadius:'var(--radius-md)', fontSize:11, color:'var(--text-tertiary)' }}>
+          <strong>Erwartetes Format:</strong> CSV oder XLSX mit Spalten: <code>Name, Rolle, Team, Max h/Woche</code>
+        </div>
+
+        <ModalActions>
+          <Btn onClick={() => { setImportModal(false); setPreview([]) }}>Abbrechen</Btn>
+          <Btn variant="primary" disabled={importing || preview.filter(r=>r.name).length === 0} onClick={confirmImport}>
+            {importing ? 'Importiert...' : <><i className="ti ti-check" /> {preview.filter(r=>r.name).length} Mitarbeiter importieren</>}
+          </Btn>
+        </ModalActions>
       </Modal>
     </>
   )
