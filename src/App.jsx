@@ -162,12 +162,6 @@ export default function App() {
       <button onClick={loadAll} style={{ display:'inline-flex',alignItems:'center',gap:5,fontSize:12,padding:'6px 12px',borderRadius:'var(--radius-md)',border:'0.5px solid var(--border-mid)',background:'var(--bg-primary)',cursor:'pointer',fontFamily:'var(--font)' }} title="Daten neu laden">
         <i className="ti ti-refresh" />
       </button>
-      {panel === 'mitarbeiter' && (
-        <button style={{ display:'inline-flex',alignItems:'center',gap:5,fontSize:12,padding:'6px 12px',borderRadius:'var(--radius-md)',border:'none',background:'#185FA5',color:'#fff',cursor:'pointer',fontFamily:'var(--font)' }}
-          onClick={() => document.dispatchEvent(new CustomEvent('open-ma-modal'))}>
-          <i className="ti ti-plus" /> Neu
-        </button>
-      )}
     </>
   )
 
