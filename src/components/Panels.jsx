@@ -375,6 +375,7 @@ export function Resources({ assignments, setAssignments, projects, mitarbeiter }
 /* ══════════════════ MITARBEITER ══════════════════ */
 export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects }) {
   const [modal, setModal]       = useState(false)
+  const [editId, setEditId]     = useState(null)
   const [importModal, setImportModal] = useState(false)
   const [form, setForm]         = useState({ name:'', role:'Solution Architect', team:'Backend', max_h:40 })
   const [preview, setPreview]   = useState([])   // rows to import
@@ -384,10 +385,24 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
   async function save() {
     if (!form.name.trim()) return
     const payload = { ...form, max_h: parseInt(form.max_h)||40 }
-    const res = await sb.from('mitarbeiter').insert(payload).select().single()
-    if (res.error) { showToast('Fehler: '+res.error.message, true); return }
-    setMitarbeiter(prev => [...prev, res.data])
-    showToast('Mitarbeiter angelegt'); setModal(false); setForm({ name:'', role:'Solution Architect', team:'Backend', max_h:40 })
+    if (editId) {
+      const { error } = await sb.from('mitarbeiter').update(payload).eq('id', editId)
+      if (error) { showToast('Fehler: '+error.message, true); return }
+      setMitarbeiter(prev => prev.map(m => m.id === editId ? { ...m, ...payload } : m))
+      showToast('Mitarbeiter aktualisiert')
+    } else {
+      const res = await sb.from('mitarbeiter').insert(payload).select().single()
+      if (res.error) { showToast('Fehler: '+res.error.message, true); return }
+      setMitarbeiter(prev => [...prev, res.data])
+      showToast('Mitarbeiter angelegt')
+    }
+    setModal(false); setEditId(null); setForm({ name:'', role:'Solution Architect', team:'Backend', max_h:40 })
+  }
+
+  function openEdit(ma) {
+    setForm({ name: ma.name, role: ma.role, team: ma.team, max_h: ma.max_h })
+    setEditId(ma.id)
+    setModal(true)
   }
 
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -470,8 +485,9 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
           <Btn onClick={() => fileRef.current?.click()}><i className="ti ti-upload" /> Import</Btn>
           <Btn variant="primary" onClick={() => setModal(true)}><i className="ti ti-plus" /> Anlegen</Btn>
         </CardHeader>
-        <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-          <thead><tr>{['Name','Rolle','Team','Max h/Woche','Projekte'].map(h=><th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
+        <div style={{ overflowX:'auto' }}>
+        <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:600 }}>
+          <thead><tr>{['Name','Rolle','Team','Max h/Woche','Projekte',''].map(h=><th key={h} style={{ textAlign:'left',padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--text-tertiary)',borderBottom:'0.5px solid var(--border-light)',textTransform:'uppercase',whiteSpace:'nowrap' }}>{h}</th>)}</tr></thead>
           <tbody>
             {mitarbeiter.map(ma => {
               const projs = [...new Set(assignments.filter(a=>a.ma_id===ma.id).map(a=>{ const p=projects.find(x=>x.id===a.proj_id); return p?.title||'?' }))]
@@ -490,14 +506,18 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
                     {projs.slice(0,3).map(t => <span key={t} style={{ display:'inline-flex',background:'var(--bg-secondary)',border:'0.5px solid var(--border-light)',borderRadius:4,padding:'2px 6px',fontSize:11,margin:1 }}>{t}</span>)}
                     {projs.length > 3 && <span style={{ fontSize:11,color:'var(--text-tertiary)' }}> +{projs.length-3}</span>}
                   </td>
+                  <td style={{ padding:'8px 10px' }}>
+                    <Btn size="sm" onClick={() => openEdit(ma)}><i className="ti ti-edit" /></Btn>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
+        </div>
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={<><i className="ti ti-user-plus" /> Mitarbeiter anlegen</>}>
+      <Modal open={modal} onClose={() => { setModal(false); setEditId(null) }} title={<><i className="ti ti-user-plus" /> {editId ? 'Mitarbeiter bearbeiten' : 'Mitarbeiter anlegen'}</>}>
         <FormRow label="Name"><input value={form.name} onChange={e=>f('name',e.target.value)} placeholder="Vor- und Nachname" /></FormRow>
         <FormGrid>
           <FormRow label="Rolle">
@@ -512,7 +532,7 @@ export function Mitarbeiter({ mitarbeiter, setMitarbeiter, assignments, projects
           </FormRow>
         </FormGrid>
         <FormRow label="Max Stunden/Woche"><input type="number" value={form.max_h} onChange={e=>f('max_h',e.target.value)} min="4" max="40" /></FormRow>
-        <ModalActions><Btn onClick={()=>setModal(false)}>Abbrechen</Btn><Btn variant="primary" onClick={save}><i className="ti ti-check" /> Anlegen</Btn></ModalActions>
+        <ModalActions><Btn onClick={()=>{ setModal(false); setEditId(null) }}>Abbrechen</Btn><Btn variant="primary" onClick={save}><i className="ti ti-check" /> {editId ? 'Speichern' : 'Anlegen'}</Btn></ModalActions>
       </Modal>
 
       {/* Import-Vorschau Modal */}
